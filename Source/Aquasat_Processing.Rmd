@@ -1,0 +1,181 @@
+---
+title: "Aquasat_Processing"
+author: "Daniel Dominguez"
+date: '2023-06-07'
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+local_Path <- "/Users/danieldominguez/Documents/Code/DOC_WSC/Data/"
+
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(googledrive)
+library(tidyverse)
+library(feather)
+library(viridis)
+library(knitr)
+library(sf)
+library(rgdal)
+library(maps)
+library(magrittr)
+library(mlbench)
+library(caret)
+library(randomForest)
+library(doParallel)
+library(onehot)
+library(xgboost)
+library(Metrics)
+library(ggpmisc)
+library(rBayesianOptimization)
+library(groupdata2)
+library(purrr)
+library(data.table)
+library(tmap)
+library(mltools)
+library(ggthemes)
+library(dplyr)
+library(dataRetrieval)
+library(ggplot2)
+library(CAST)
+library(mapview)
+library(party)
+library(LiblineaR)
+library(scales)
+library(dplyr)
+library(onehot)
+library(kernlab)
+```
+
+
+```{r}
+#The limit of the bands is 20000 and that seems to be erroneous based on other measurments in those bands will explore further removing for now.
+RS<-read.csv(file=paste0(local_Path,"/data/sr_wq_rs_join.csv")) %>% 
+  filter(red<20000 & red>0) %>% 
+  filter(green<20000 &green>0) %>% 
+  filter(blue<20000 &blue>0) %>% 
+  filter(swir1<20000 &swir1>0) %>% 
+  filter(swir2<20000 &swir2>0) %>% 
+  filter(nir<20000 & nir>0) %>% 
+  mutate(NR=nir/red, #calculate the bands in JG new study
+         BR=blue/red,
+         GR=green/red,
+         SR=swir1/red,
+         BG=blue/green,
+         RG=red/green,
+         NG=nir/green,
+         SG=swir1/green,
+         BN=blue/nir,
+         GN=green/nir,
+         RN=red/nir,
+         SN=swir1/nir,
+         BS=blue/swir1,
+         GS=green/swir1,
+         RS=red/swir1,
+         NS=nir/swir1,
+         RGN=red/(green+nir),
+         RGB=red/(green+blue),
+         RGS=red/(green+swir1),
+         RBN=red/(blue+nir),
+         RBS=red/(blue+swir1),
+         RNS=red/(nir+swir1),
+         GBR=green/(blue+swir1),
+         GBN=green/(blue+nir),
+         GBS=green/(blue+swir1),
+         GRN=green/(red+nir),
+         GRB=green/(red+blue),
+         GNS=green/(nir+swir1),
+         BRG=blue/(red+green),
+         BRS=blue/(red+swir1),
+         BGN=blue/(green+nir),
+         BGS=blue/(green+swir1),
+         BNS=blue/(nir+swir1),
+         NRG=nir/(red+green),
+         NRB=nir/(red+blue),
+         NRS=nir/(red+swir1),
+         NGB=nir/(green+blue),
+         NGS=nir/(green+nir),
+         NBS=nir/(blue+swir1),
+         GR2=(red+green)/2,
+         GN2=(nir+green)/2,
+         B_RG=(blue-red)/green,
+         NS_NR=(nir-swir1)/(red-swir1),
+         fai=nir - (red + (swir1-red)*((830-660)/(1650-660))),
+         N_S=nir-swir1,
+         N_R=nir-red,
+         NDVI=((nir - red)/(nir + red)),
+         NDWI=((green - swir1)/(green + swir1)),
+         NDSSI=((blue - nir)/ (blue + nir)),
+         GNGN=((green- nir)/ (green + nir))) %>% 
+  dplyr::mutate(uniqueID = row_number())
+## Read in and convert the sites to extract the ecoregion they are located in
+sites<-RS %>% 
+  dplyr::select(SiteID,lat, long) %>%  
+  unique() %>% 
+  st_as_sf(coords=c("long","lat"), crs=4269) 
+
+EcoRegions<-st_read(dsn=paste0(local_Path,"ecoregions/NA_CEC_Eco_Level1.shp")) #Load ecoregions
+
+EcoRegions_sf<-EcoRegions %>% 
+  st_transform(crs = 4269) %>% 
+  st_make_valid()#Extract the ecoregion for each site
+
+```
+
+```{r}
+
+site_ecoregions<-st_join(sites,EcoRegions_sf) # merge the ecoregion to dataset
+
+site_ecoregions[is.na(site_ecoregions)] <- "COASTAL"# mutate the NA category that is sites along the coastline to Coastal for ecoregion grouping
+
+site_ecoregions<-site_ecoregions %>% 
+  as.data.frame() %>% 
+  dplyr::select(SiteID,ecoregion=NA_L1NAME)
+
+RS<-left_join(RS,site_ecoregions,by="SiteID")# Join ecoregions to dataset
+```
+
+```{r}
+get_season <- function(date_str) {
+  # Remove the time zone offset 'Z' from the input string
+  date_str <- gsub("Z$", "", date_str)
+  
+  # Parse the date string using the format "%Y-%m-%dT%H:%M:%S"
+  date <- as.POSIXct(date_str, format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
+  month <- month(date)
+  
+  # Determine the season based on the month following water year; Fall October-December and so on
+  if (month %in% c(1, 2, 3)) {
+    return("Winter")
+  } else if (month %in% c(4, 5, 6)) {
+    return("Spring")
+  } else if (month %in% c(7, 8, 9)) {
+    return("Summer")
+  } else {
+    return("Fall")
+  }
+}
+
+```
+
+```{r}
+RS <- RS %>%
+  mutate(season = sapply(date_unity, get_season))
+```
+
+
+```{r}
+site_count<-RS %>% 
+  group_by(SiteID) %>% 
+  summarise(n=n())# count how many observations per site there is for filtering later
+
+RS<-left_join(RS,site_count,by="SiteID") # join to dataset
+
+write.csv(RS, paste0(local_Path,"aquasat_processed.csv"),row.names = FALSE)
+```
+
