@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
 
 # Load the training data from the saved CSV file
-train_df = pd.read_csv("/Users/danieldominguez/Documents/Code/ATS_RandomForests/data/train_v1.csv")
+train_df = pd.read_csv("/Users/danieldominguez/Documents/Code/DOC_WSC/Data/DOC_train_v1.csv")
 
 # Load the testing dataset with features
-test_df = pd.read_csv("/Users/danieldominguez/Documents/Code/ATS_RandomForests/data/test_v1.csv")
+test_df = pd.read_csv("/Users/danieldominguez/Documents/Code/DOC_WSC/Data/DOC_test_v1.csv")
 
 # Remove 'mag' from both DataFrames
 train_df = train_df.drop(['mag', 'uniqueID'], axis=1)
@@ -73,6 +73,7 @@ def custom_metric(preds, dtrain):
     mean_quadrupled_error = np.mean(errors ** 6)
     return 'mean_quadrupled_error', mean_quadrupled_error
 
+# Define the hauber metric that uses a threshold, mae by defa
 def hauber_metric(preds, dtrain):
     labels = dtrain.get_label()
     errors = preds - labels
@@ -88,10 +89,10 @@ def mae_metric(preds, dtrain):
     return 'mean_absolute_error', mean_absolute_error
 
 xgb_regressor = xgb.XGBRegressor(
-    n_estimators=5000,
-    max_depth=200,
-    learning_rate=0.001,
-    random_state=22,
+    n_estimators=200,# How many boosting rounds, default 200 based on grid search
+    max_depth=20, #How many features should a branch be able to use, default 10 based on grid search
+    learning_rate=0.1,# How fast should the model learn, default 0.1 based on grid search
+    random_state=22, # random seed for reproducibility
 )
 
 # Specify the evaluation set to track the learning curve
