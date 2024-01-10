@@ -14,48 +14,29 @@ local_Path <- "/Users/danieldominguez/Documents/Code/DOC_WSC/Data/"
 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-library(googledrive)
 library(tidyverse)
 library(feather)
 library(viridis)
-library(knitr)
 library(sf)
-library(rgdal)
-library(maps)
-library(magrittr)
 library(mlbench)
 library(caret)
-library(randomForest)
-library(doParallel)
-library(onehot)
 library(xgboost)
 library(Metrics)
-library(ggpmisc)
-library(rBayesianOptimization)
-library(groupdata2)
 library(purrr)
 library(data.table)
-library(tmap)
 library(mltools)
 library(ggthemes)
 library(dplyr)
-library(dataRetrieval)
 library(ggplot2)
-library(CAST)
-library(mapview)
-library(party)
-library(LiblineaR)
 library(scales)
 library(dplyr)
-library(onehot)
-library(kernlab)
+library(kableExtra)
 ```
 
 
 ```{r}
 #The limit of the bands is 20000 and that seems to be erroneous based on other measurments in those bands will explore further removing for now.
-RS<-read.csv(file=paste0(local_Path,"/data/sr_wq_rs_join.csv")) %>% 
+RS<-read.csv(file=paste0(local_Path,"sr_wq_rs_join.csv")) %>% 
   filter(red<20000 & red>0) %>% 
   filter(green<20000 &green>0) %>% 
   filter(blue<20000 &blue>0) %>% 

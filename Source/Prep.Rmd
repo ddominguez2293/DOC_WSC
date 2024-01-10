@@ -9,7 +9,7 @@ editor_options:
 ### The best way to describe how the training framework works/ was designed is by thikning about car engine tuning for an automatic transmission. As the DOC (or water quality parameter) increases the AI model switches similar to what occurs when you step on the gas and the car switches gears. In this case each of the AI models can be thought about as a gear in the transmission. The statistics of another AI predicting a measurement in a different quanitle also back up how this works but will be explained below. 
 
 ```{r}
-local_Path <- "/Users/danieldominguez/Documents/Code/ATS_RandomForests"
+local_Path <- "/Users/danieldominguez/Documents/Code/DOC_WSC/Data/"
 
 ```
 
@@ -35,44 +35,61 @@ library(kableExtra)
 
 ```
 
-```{r functions, echo=FALSE}
 
-round_any = function(x, accuracy, f = round) {
-  f(x / accuracy) * accuracy
-}
+```{r prep}
+# filter data
+data <- read.csv(paste0(local_Path, "aquasat_processed.csv")) %>%
+  #filter(!is.na(doc)) %>% # remove rows without DOC data
+  filter(!is.na(doc) & !is.na(secchi)) %>% # (option) filtering out rows without DOC and Secchi
+  filter(pwater >= 80) %>% #filter for mostly water pixels
+  filter(!type == "Facility") %>% #not enough data to be representative when splitting betwen quanitles
+  #filter(n>=10) %>% # (option) filter if there is not at least x readings for a site for better training
+  filter(pixelCount > 0) %>% #filter erroneous pixel counts
+  mutate(value = doc) %>%  #mutate doc to target value
+  filter_all(all_vars(!is.infinite(.))) %>% # remove rows with infinites that might have resulted from band calculations
+  mutate(
+    WC = case_when(
+      red < green & red > blue ~ "Green",
+      red > green & nir > 0.01 ~ "Brown",
+      green < blue ~ "BG",
+      TRUE ~ "Green"
+    )
+  ) # Create water color classification based on literature
+  
+```
 
-traintest <- function(x) {
-  # quantile is represented in each fold to make them representative. Basically takes a more stratified sample
-  x <- x %>%
-    dplyr::mutate(mag = cut(value, quantile(
-      x = value,
-      c(0,0.05,0.1, 0.2,0.3, 0.4,0.5, 0.6, 0.7,  0.8,  0.9,0.95,  1),
-      include.lowest = T
-    )),
-    mag = factor(
-      mag,
-      labels = c( 'A0.05','A0.1', 'A0.2','A0.3', 'A0.4','A0.5', 'A0.6', 'A0.7',  'A0.8',  'A0.9','A0.95','A1')
-    )) %>%
-    ungroup()
-  
-  set.seed(22)
-  
-  train <- x %>%
-    group_by( mag,ecoregion) %>%
-    sample_frac(.8) %>%
-    ungroup() %>%
-    dplyr::mutate(.partitions = 1)
-  
-  test <- x %>%
-    filter(!(uniqueID %in% train$uniqueID)) %>%
-    dplyr::mutate(.partitions = 2)
-  
-  out <- train %>%
-    bind_rows(test)
-  
-  return(out)
-}
+```{r}
+bands <- c("red", "green","blue", "swir1", "swir2","nir",
+  "NR", "BR", "GR", "SR", "BG", "RG", "NG", "SG", "BN", "GN",
+  "RN", "SN", "BS", "GS", "RS", "NS", "RGN", "RGB", "RGS", "RBN",
+  "RBS", "RNS", "GBR", "GBN", "GBS", "GRN", "GRB", "GNS",
+  "BRG", "BRS", "BGN", "BGS", "BNS", "NRG", "NRB", "NRS",
+  "NGB", "NGS", "NBS", "GR2", "GN2", "B_RG", "NS_NR", "fai",
+  "N_S", "N_R", "NDVI", "NDWI", "NDSSI", "GNGN"
+)# (option)All available bands
+```
 
+
+```{r}
+
+# select featuers
+features <- c("red", "blue","GS","green",
+              "swir1","swir2","SG","RBS","NGS","GBS","GR2","GN2", "GRB","N_R",
+              "NR","N_S", "RGB","ecoregion", "type","season","WC")  #Narrower features
+
+filtered_data <- data %>%
+  dplyr::select(features, value, uniqueID,ecoregion, type,season,WC,secchi) %>% 
+  mutate_if(is.character,as.factor) 
+
+#This will create a "magnitude label if below a threshold low if above high for better train test split 
+filtered_data$mag <- ifelse(filtered_data$value <= 40, "low", "high")
+
+# This will write the full filtered dataset which can then be split in the python files
+write.csv(filtered_data,paste0(local_Path,"aquasat_full.csv"),row.names=FALSE)
+
+```
+
+```{r}
 random_filter_data <- function(df, column_name, condition, filter_percentage, seed ) {
   # Set a random seed for reproducibility
   if (!is.null(seed)) {
@@ -91,95 +108,52 @@ random_filter_data <- function(df, column_name, condition, filter_percentage, se
   
   return(filtered_df)
 }
-
-```
-
-
-```{r prep}
-# filter data
-data <- read.csv(paste0(local_Path,"/data/aquasat_processed.csv")) %>%
-    #filter(!is.na(doc)) %>% # remove rows without DOC data
-  filter(!is.na(doc) & !is.na(secchi)) %>% 
-    filter(pwater>=80) %>% #filter for mostly water pixels
-    filter(!type=="Facility") %>% #not enough data to be representative when splitting betwen quanitles
-    #filter(n>=10) %>% # filter if there is not at least ten readings for a site for better training
-    filter(pixelCount >0 ) %>% #filter erroneous pixel counts
-    mutate(value = doc) %>%  #mutate doc to log
-  filter_all(all_vars(!is.infinite(.))) %>% # remove rows with infinites that might have resulted from band calculations
-  mutate(WC = case_when(
-    red < green & red > blue ~ "Green",
-    red > green & nir > 0.01 ~ "Brown",
-    green < blue ~ "BG",
-    TRUE ~ "Green"
-  ))
-  
-```
-
-```{r}
-bands <- c("red", "green","blue", "swir1", "swir2","nir",
-  "NR", "BR", "GR", "SR", "BG", "RG", "NG", "SG", "BN", "GN",
-  "RN", "SN", "BS", "GS", "RS", "NS", "RGN", "RGB", "RGS", "RBN",
-  "RBS", "RNS", "GBR", "GBN", "GBS", "GRN", "GRB", "GNS",
-  "BRG", "BRS", "BGN", "BGS", "BNS", "NRG", "NRB", "NRS",
-  "NGB", "NGS", "NBS", "GR2", "GN2", "B_RG", "NS_NR", "fai",
-  "N_S", "N_R", "NDVI", "NDWI", "NDSSI", "GNGN"
-)
 ```
 
 
 ```{r}
 
-# select featuers
-features <- c("red", "blue","GS","green",
-              "swir1","swir2","SG","RBS","NGS","GBS","GR2","GN2",
-              "NR","N_S", "RGB","ecoregion", "type","season","WC")  
-
-filtered_data <- data %>%
-  droplevels() %>%
-  traintest() %>% 
-  ungroup() %>%
-  dplyr::select(bands, value, uniqueID,ecoregion, type,season,mag,WC,secchi) %>% 
-  filter(!is.na(mag)) %>%
-  mutate_if(is.character,as.factor) 
-
-
-filtered_data$mag <- ifelse(filtered_data$value <= 10, "low", "high")
-
+# this is an experimental split I was using to artificially reduce the amount of low observations similar to Gardner et al., 2023
 rf_data_low<-random_filter_data(filtered_data, 'value', function(x) x > 0 & x < 10, filter_percentage = 0.95, seed = 01) %>% 
-  dplyr::select(bands, value, uniqueID,ecoregion, type,season,WC,secchi) %>% 
+  dplyr::select(features, value, uniqueID,ecoregion, type,season,WC,secchi) %>% 
   mutate(mag="low")
 
 rf_data_med<-random_filter_data(filtered_data, 'value', function(x) x > 10 & x < 40, filter_percentage = 0.9, seed = 01) %>% 
-  dplyr::select(bands, value, uniqueID,ecoregion, type,season,WC,secchi)%>% 
+  dplyr::select(features, value, uniqueID,ecoregion, type,season,WC,secchi)%>% 
   mutate(mag="low")
 
+#We keep all the data that is a high outlier
 rf_data_high<- data %>% 
   filter(value>=40) %>% 
-  dplyr::select(bands, value, uniqueID,ecoregion, type,season,WC,secchi)%>% 
+  dplyr::select(features, value, uniqueID,ecoregion, type,season,WC,secchi)%>% 
   mutate(mag="high")
 
 rf_data<-rbind(rf_data_low,rf_data_med,rf_data_high)
 
-  write.csv(filtered_data,paste0(local_Path,"/data/aquasat_full.csv"),row.names=FALSE)
-
-write.csv(rf_data,paste0(local_Path,"/data/rf_aquasat_full.csv"),row.names=FALSE)  
+#write.csv(rf_data,paste0(local_Path,"rf_aquasat_full.csv"),row.names=FALSE)  
 
 ```
 
-```{r}
-  train_v1 <- filtered_data %>%
-    group_by( mag) %>%
-    sample_frac(.8) %>%
-    ungroup() %>%
-  arrange(value)
-  
-  test_v1 <- filtered_data %>%
-    filter(!(uniqueID %in% train_v1$uniqueID)) %>%
-  arrange(value)
-  
-write.csv(train_v1,paste0(local_Path,"/data/train_v1.csv"),row.names=FALSE)
 
-write.csv(test_v1,paste0(local_Path,"/data/test_v1.csv"),row.names=FALSE)
+```{r}
+# Pre split the data into train and test for better stratification sampling
+
+set.seed(15) # set seed for reproducibility
+
+train_v1 <- filtered_data %>%
+  group_by( mag) %>%
+  sample_frac(.8) %>%
+  ungroup() %>%
+  arrange(value)
+  
+# Select all uniqueID's not selected in the training set
+test_v1 <- filtered_data %>%
+  filter(!(uniqueID %in% train_v1$uniqueID)) %>%
+  arrange(value)
+  
+write.csv(train_v1,paste0(local_Path,"DOC_train_v1.csv"),row.names=FALSE)
+
+write.csv(test_v1,paste0(local_Path,"DOC_test_v1.csv"),row.names=FALSE)
     
     
 ```
