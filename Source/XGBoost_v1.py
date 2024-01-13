@@ -77,7 +77,7 @@ def custom_metric(preds, dtrain):
 def hauber_metric(preds, dtrain):
     labels = dtrain.get_label()
     errors = preds - labels
-    delta = 1.0  # You can adjust the delta parameter as needed
+    delta = 0.5  # You can adjust the delta parameter as needed
     quadratic_loss = np.where(np.abs(errors) < delta, 0.5 * errors**2, delta * (np.abs(errors) - 0.5 * delta))
     mean_quadratic_loss = np.mean(quadratic_loss)
     return 'mean_huber_loss', mean_quadratic_loss
@@ -89,9 +89,9 @@ def mae_metric(preds, dtrain):
     return 'mean_absolute_error', mean_absolute_error
 
 xgb_regressor = xgb.XGBRegressor(
-    n_estimators=200,# How many boosting rounds, default 200 based on grid search
+    n_estimators=2000,# How many boosting rounds, default 200 based on grid search
     max_depth=20, #How many features should a branch be able to use, default 10 based on grid search
-    learning_rate=0.1,# How fast should the model learn, default 0.1 based on grid search
+    learning_rate=0.01,# How fast should the model learn, default 0.1 based on grid search
     random_state=22, # random seed for reproducibility
 )
 

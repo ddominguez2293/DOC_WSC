@@ -3,14 +3,37 @@ Final Doc Model set-up for WaterSciCon
 Author: Daniel Dominguez
 Contact: Daniel.Dominguez@colostate.edu
 
-This code includes 5 files so far
+This code includes 5 files so far:
 
-Aquasat Processing.Rmd 
+R Markdown files are being run using the following configuration:
+R 4.3.1
+tidyverse 2.0.0
+sf 1.0-14
+dplyr 1.1.3
+
+The Python codes are run in VScode using the following configuration:
+Python  3.11.5
+Python Environment Manager  v1.2.4 
+Pylance  v2023.12.1 
+
+Packages:
+numpy 1.26.0
+matplotlib 3.8.0
+pandas 2.1.0
+scikit-learn 1.3.0
+xgboost 2.0.0
+tensorflow 2.14.0
+
+
+1 Aquasat Processing.Rmd 
+This is the first script that needs to be run and works with the raw aquasat v1 data set (downloadable here: https://figshare.com/collections/AquaSat/4506140). You also need the level 1 ecoregions (downloadable here: https://www.epa.gov/eco-research/ecoregions-north-america).
 Processess the raw aquasat file by calculating common remote sensing parameters included in the Gardner 2023 TSS study
 Individual sites are then used to extract the geospatial ecoregion they are located in
 Amount of observations at each site are calculated as an option for filtering later
 
-Prep.Rmd
+2 Prep.Rmd
+This is the second script that needs to be ran, this code further processes the code into individual factors and can be tweaked for mulitple parameters. 
+
 Further prepares the aquasat dataset for training and testing
 Data is loaded and then filtered based on similar paramters to other studies using the Aquasat dataset
 Water Color based on remote sensing band values are also designated in this step, in the future this can be moved to the previous step
@@ -19,8 +42,8 @@ data is then assignedd a magnitude of low or high based on if it is above or bel
 There is also a function that can randomly create a smaller dataset based on the magnitude but this has to be further explored.
 The last bit of code pre-splits the training dataset selecting 80% of the data in both magnitudes for better training and testing as random sorting could include less or more valus in either phases leading to artifical low or high error rates, which the errors tend to be mostly drived by underpredictions in the high outlier data
 
-XGrid.py 
-is set of code that can test many permutations of XGBoost models so that one doesn't have to test them individually.
+3 XGrid.py 
+This is the first standa alone code this is a set of code that can test many permutations of XGBoost models so that one doesn't have to test them individually.
 It is good for getting a good idea of which parmaters to use but it should not be used solely for the last set of testing parameters as hyper-tuning is more delicate and encompasses more that what can be derived from these methods.
 
 XGBoost.py
