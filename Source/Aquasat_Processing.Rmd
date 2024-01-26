@@ -122,7 +122,7 @@ sites <- RS %>%
 
 url <- "https://gaftp.epa.gov/EPADataCommons/ORD/Ecoregions/cec_na/na_cec_eco_l1.zip"
 name <- "na_cec_eco_l1.zip"
-if (file.exists(file.path(local_Path, "ecoregions", name))) {
+if (file.exists(file.path(local_Path, "ecoregions/NA_CEC_Eco_Level1.shp"))) {
   "The ecoregion file has already been downloaded."
 } else {
   dir.create(file.path(local_Path, "ecoregions"))

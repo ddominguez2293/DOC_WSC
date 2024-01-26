@@ -9,36 +9,32 @@ editor_options:
 ### The best way to describe how the training framework works/ was designed is by thikning about car engine tuning for an automatic transmission. As the DOC (or water quality parameter) increases the AI model switches similar to what occurs when you step on the gas and the car switches gears. In this case each of the AI models can be thought about as a gear in the transmission. The statistics of another AI predicting a measurement in a different quanitle also back up how this works but will be explained below. 
 
 ```{r}
-local_Path <- "/Users/danieldominguez/Documents/Code/DOC_WSC/Data/"
+local_Path <- "Data/"
 
 ```
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
-library(feather)
-library(viridis)
-library(sf)
-library(mlbench)
-library(caret)
-library(xgboost)
-library(Metrics)
-library(purrr)
-library(data.table)
-library(mltools)
-library(ggthemes)
-library(dplyr)
-library(ggplot2)
-library(scales)
-library(dplyr)
-library(kableExtra)
+# library(feather)
+# library(viridis)
+# library(sf)
+# library(mlbench)
+# library(caret)
+# library(xgboost)
+# library(Metrics)
+# library(data.table)
+# library(mltools)
+# library(ggthemes)
+# library(scales)
+# library(kableExtra)
 
 ```
 
 
 ```{r prep}
 # filter data
-data <- read.csv(paste0(local_Path, "aquasat_processed.csv")) %>%
+data <- read_csv(file.path(local_Path, "aquasat_processed.csv")) %>%
   #filter(!is.na(doc)) %>% # remove rows without DOC data
   filter(!is.na(doc) & !is.na(secchi)) %>% # (option) filtering out rows without DOC and Secchi
   filter(pwater >= 80) %>% #filter for mostly water pixels
@@ -78,14 +74,14 @@ features <- c("red", "blue","GS","green",
               "NR","N_S", "RGB","ecoregion", "type","season","WC")  #Narrower features
 
 filtered_data <- data %>%
-  dplyr::select(features, value, uniqueID,ecoregion, type,season,WC,secchi) %>% 
+  select(features, value, uniqueID, SiteID, ecoregion, type, season, WC, secchi) %>% 
   mutate_if(is.character,as.factor) 
 
 #This will create a "magnitude label if below a threshold low if above high for better train test split 
-filtered_data$mag <- ifelse(filtered_data$value <= 40, "low", "high")
+filtered_data$mag <- if_else(filtered_data$value <= 40, "low", "high")
 
 # This will write the full filtered dataset which can then be split in the python files
-write.csv(filtered_data,paste0(local_Path,"aquasat_full.csv"),row.names=FALSE)
+write_csv(filtered_data, file.path(local_Path,"aquasat_full.csv"))
 
 ```
 
@@ -125,7 +121,7 @@ rf_data_med<-random_filter_data(filtered_data, 'value', function(x) x > 10 & x <
 #We keep all the data that is a high outlier
 rf_data_high<- data %>% 
   filter(value>=40) %>% 
-  dplyr::select(features, value, uniqueID,ecoregion, type,season,WC,secchi)%>% 
+  dplyr::select(features, value, uniqueID, ecoregion, type, season, WC, secchi)%>% 
   mutate(mag="high")
 
 rf_data<-rbind(rf_data_low,rf_data_med,rf_data_high)
@@ -141,7 +137,7 @@ rf_data<-rbind(rf_data_low,rf_data_med,rf_data_high)
 set.seed(15) # set seed for reproducibility
 
 train_v1 <- filtered_data %>%
-  group_by( mag) %>%
+  group_by(mag) %>%
   sample_frac(.8) %>%
   ungroup() %>%
   arrange(value)
@@ -150,11 +146,85 @@ train_v1 <- filtered_data %>%
 test_v1 <- filtered_data %>%
   filter(!(uniqueID %in% train_v1$uniqueID)) %>%
   arrange(value)
+# or anti_join(filtered_data, train_v1)
   
-write.csv(train_v1,paste0(local_Path,"DOC_train_v1.csv"),row.names=FALSE)
+train_v1 %>% 
+  select(-SiteID) %>% 
+  write_csv(., 
+            file.path(local_Path,"DOC_train_v1.csv"))
+test_v1 %>% 
+  select(-SiteID) %>% 
+  write_csv(.,
+          file.path(local_Path,"DOC_test_v1.csv"))
+    
+```
 
-write.csv(test_v1,paste0(local_Path,"DOC_test_v1.csv"),row.names=FALSE)
-    
-    
+
+```{r}
+# Pre split the data into train and test for better stratification sampling
+# this time by grabbing a proportion of random sites
+unique_SiteID <- data.frame(unique(filtered_data$SiteID)) %>% 
+  rename(SiteID = unique.filtered_data.SiteID.)
+train_ids <- sample_frac(unique_SiteID, 0.8)$SiteID
+
+train_v2 <- filtered_data %>%
+  filter(SiteID %in% train_ids) %>%
+  arrange(value) 
+  
+# Select all uniqueID's not selected in the training set
+test_v2 <- anti_join(filtered_data, train_v2)
+  
+train_v2 %>% 
+  select(-SiteID) %>% 
+  write_csv(., 
+            file.path(local_Path,"DOC_train_v2.csv"))
+test_v2 %>% 
+  select(-SiteID) %>% 
+  write_csv(.,
+          file.path(local_Path,"DOC_test_v2.csv"))
+```
+
+Add a quick plot to see if we retained range and general pattern of data
+
+```{r}
+ggplot(filtered_data, aes(color = type)) + geom_histogram(aes(value)) + facet_grid(type ~ .)
+ggplot(train_v1, aes(color = type)) + geom_histogram(aes(value)) + facet_grid(type ~ .)
+ggplot(test_v1, aes(color = type)) + geom_histogram(aes(value)) + facet_grid(type ~ .)
+ggplot(train_v2, aes(color = type)) + geom_histogram(aes(value)) + facet_grid(type ~ .)
+ggplot(test_v2, aes(color = type)) + geom_histogram(aes(value)) + facet_grid(type ~ .)
+
+ggplot(filtered_data, aes(color = type)) + geom_histogram(aes(log(value))) + facet_grid(type ~ .)
+ggplot(train_v1, aes(color = type)) + geom_histogram(aes(log(value))) + facet_grid(type ~ .)
+ggplot(test_v1, aes(color = type)) + geom_histogram(aes(log(value))) + facet_grid(type ~ .)
+ggplot(train_v2, aes(color = type)) + geom_histogram(aes(log(value))) + facet_grid(type ~ .)
+ggplot(test_v2, aes(color = type)) + geom_histogram(aes(log(value))) + facet_grid(type ~ .)
+
+range(filtered_data$value)
+range(train_v1$value)
+range(test_v1$value)
+range(train_v2$value)
+range(test_v2$value)
+```
+
+And also look for ecoregion presence
+
+```{r}
+ggplot(filtered_data, aes(fill = ecoregion)) + 
+  geom_histogram(aes(ecoregion), stat = "count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggplot(train_v1, aes(fill = ecoregion)) + 
+  geom_histogram(aes(ecoregion), stat = "count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggplot(test_v1, aes(fill = ecoregion)) + 
+  geom_histogram(aes(ecoregion), stat = "count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggplot(train_v2, aes(fill = ecoregion)) + 
+  geom_histogram(aes(ecoregion), stat = "count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggplot(test_v2, aes(fill = ecoregion)) + 
+  geom_histogram(aes(ecoregion), stat = "count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+# note, this drops one ecoregion group from the test set
+                                                               
 ```
 
