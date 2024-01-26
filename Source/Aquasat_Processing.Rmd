@@ -8,41 +8,58 @@ editor_options:
 ---
 
 ```{r}
-local_Path <- "/Users/danieldominguez/Documents/Code/DOC_WSC/Data/"
+local_Path <- "Data/"
 
 ```
 
 
 ```{r setup, include=FALSE}
 library(tidyverse)
-library(feather)
-library(viridis)
+# library(feather)
+#library(viridis)
 library(sf)
-library(mlbench)
-library(caret)
-library(xgboost)
-library(Metrics)
-library(purrr)
-library(data.table)
-library(mltools)
-library(ggthemes)
-library(dplyr)
-library(ggplot2)
-library(scales)
-library(dplyr)
-library(kableExtra)
+# library(mlbench)
+# library(caret)
+# library(xgboost)
+# library(Metrics)
+# library(data.table)
+# library(mltools)
+# library(ggthemes)
+# library(scales)
+# library(kableExtra)
 ```
 
 
+# Download Aquasat File
+
+Check for presence of Aquasat matchup file - if it doesn't exist, download it.
+
 ```{r}
-#The limit of the bands is 20000 and that seems to be erroneous based on other measurments in those bands will explore further removing for now.
-RS<-read.csv(file=paste0(local_Path,"sr_wq_rs_join.csv")) %>% 
-  filter(red<20000 & red>0) %>% 
-  filter(green<20000 &green>0) %>% 
-  filter(blue<20000 &blue>0) %>% 
-  filter(swir1<20000 &swir1>0) %>% 
-  filter(swir2<20000 &swir2>0) %>% 
-  filter(nir<20000 & nir>0) %>% 
+url <- "https://figshare.com/ndownloader/files/18733733"
+name <- "sr_wq_rs_join.csv"
+if (file.exists(file.path(local_Path, name))) {
+  "The Aquasat file has already been downloaded."
+} else {
+  # the download will take some time.
+  options(timeout=10000)
+  download.file(url = url, 
+                destfile = file.path(local_Path, name))
+  "The Aquasat file has been downloaded"
+}
+```
+
+# High-level QAQC
+
+```{r}
+# Filter RS data to reasonable range (0-2000), images with at least 8 pixels
+RS <- read_csv(file.path(local_Path,"sr_wq_rs_join.csv")) %>% 
+  filter(red<2000 & red>0) %>% 
+  filter(green<2000 & green>0) %>% 
+  filter(blue<2000 & blue>0) %>% 
+  filter(swir1<2000 & swir1>0) %>% 
+  filter(swir2<2000 & swir2>0) %>% 
+  filter(nir<2000 & nir>0) %>% 
+  filter(pixelCount > 8) %>% 
   mutate(NR=nir/red, #calculate the bands in JG new study
          BR=blue/red,
          GR=green/red,
@@ -93,42 +110,63 @@ RS<-read.csv(file=paste0(local_Path,"sr_wq_rs_join.csv")) %>%
          NDWI=((green - swir1)/(green + swir1)),
          NDSSI=((blue - nir)/ (blue + nir)),
          GNGN=((green- nir)/ (green + nir))) %>% 
-  dplyr::mutate(uniqueID = row_number())
+  mutate(uniqueID = row_number())
+```
+
+```{r}
 ## Read in and convert the sites to extract the ecoregion they are located in
-sites<-RS %>% 
-  dplyr::select(SiteID,lat, long) %>%  
+sites <- RS %>% 
+  select(SiteID,lat, long, type) %>%  
   unique() %>% 
   st_as_sf(coords=c("long","lat"), crs=4269) 
 
-EcoRegions<-st_read(dsn=paste0(local_Path,"ecoregions/NA_CEC_Eco_Level1.shp")) #Load ecoregions
+url <- "https://gaftp.epa.gov/EPADataCommons/ORD/Ecoregions/cec_na/na_cec_eco_l1.zip"
+name <- "na_cec_eco_l1.zip"
+if (file.exists(file.path(local_Path, "ecoregions", name))) {
+  "The ecoregion file has already been downloaded."
+} else {
+  dir.create(file.path(local_Path, "ecoregions"))
+  download.file(url = url, 
+                destfile = file.path(local_Path, "ecoregions", name))
+  unzip(file.path(local_Path, "ecoregions", name), 
+        exdir = file.path(local_Path, "ecoregions"))
+  unlink(file.path(local_Path, "ecoregions", name))
+}
 
-EcoRegions_sf<-EcoRegions %>% 
+EcoRegions <- st_read(dsn=paste0(local_Path,"ecoregions/NA_CEC_Eco_Level1.shp")) #Load ecoregions
+
+EcoRegions_sf <- EcoRegions %>% 
   st_transform(crs = 4269) %>% 
-  st_make_valid()#Extract the ecoregion for each site
+  st_make_valid()
 
 ```
 
 ```{r}
-
+#Extract the ecoregion for each site
 site_ecoregions<-st_join(sites,EcoRegions_sf) # merge the ecoregion to dataset
 
-site_ecoregions[is.na(site_ecoregions)] <- "COASTAL"# mutate the NA category that is sites along the coastline to Coastal for ecoregion grouping
+ggplot(site_ecoregions, aes(color = NA_L1NAME, shape = type)) + 
+  geom_sf()
 
-site_ecoregions<-site_ecoregions %>% 
+site_ecoregions <- site_ecoregions %>% 
+  mutate(NA_L1NAME = if_else(is.na(NA_L1NAME),
+                             "COASTAL",
+                             NA_L1NAME))
+# site_ecoregions[is.na(site_ecoregions)] <- "COASTAL"# mutate the NA category that is sites along the coastline to Coastal for ecoregion grouping
+
+site_ecoregions <- site_ecoregions %>% 
   as.data.frame() %>% 
-  dplyr::select(SiteID,ecoregion=NA_L1NAME)
+  select(SiteID,
+         ecoregion=NA_L1NAME)
 
-RS<-left_join(RS,site_ecoregions,by="SiteID")# Join ecoregions to dataset
+RS <- left_join(RS,site_ecoregions,by="SiteID")# Join ecoregions to dataset
 ```
+
+Apply season string to date 
 
 ```{r}
 get_season <- function(date_str) {
-  # Remove the time zone offset 'Z' from the input string
-  date_str <- gsub("Z$", "", date_str)
-  
-  # Parse the date string using the format "%Y-%m-%dT%H:%M:%S"
-  date <- as.POSIXct(date_str, format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
-  month <- month(date)
+  month <- month(date_str)
   
   # Determine the season based on the month following water year; Fall October-December and so on
   if (month %in% c(1, 2, 3)) {
@@ -142,11 +180,8 @@ get_season <- function(date_str) {
   }
 }
 
-```
-
-```{r}
 RS <- RS %>%
-  mutate(season = sapply(date_unity, get_season))
+  mutate(season = map(date, get_season))
 ```
 
 
@@ -157,6 +192,6 @@ site_count<-RS %>%
 
 RS<-left_join(RS,site_count,by="SiteID") # join to dataset
 
-write.csv(RS, paste0(local_Path,"aquasat_processed.csv"),row.names = FALSE)
+write_csv(RS, file.path(local_Path,"aquasat_processed.csv"))
 ```
 

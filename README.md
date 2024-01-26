@@ -24,14 +24,23 @@ scikit-learn 1.3.0
 xgboost 2.0.0
 tensorflow 2.14.0
 
+A OneDrive folder Symlink is used for this workflow to facilitate not re-running
+the pre-processing in the .Rmd files. The OneDrive folder is managed
+by Daniel Dominguez, reach out for a link. To reproduce this from scratch, run 
+the scripts as documented below. 
 
-1 Aquasat Processing.Rmd 
+To set up a symlink on a Mac you can use the following in the terminal:
+```
+ln -s /path/to/original /where/you/want/the/link
+```
+
+# 1 Aquasat Processing.Rmd 
 This is the first script that needs to be run and works with the raw aquasat v1 data set (downloadable here: https://figshare.com/collections/AquaSat/4506140). You also need the level 1 ecoregions (downloadable here: https://www.epa.gov/eco-research/ecoregions-north-america).
 Processess the raw aquasat file by calculating common remote sensing parameters included in the Gardner 2023 TSS study
 Individual sites are then used to extract the geospatial ecoregion they are located in
 Amount of observations at each site are calculated as an option for filtering later
 
-2 Prep.Rmd
+# 2 Prep.Rmd
 This is the second script that needs to be ran, this code further processes the code into individual factors and can be tweaked for mulitple parameters. 
 
 Further prepares the aquasat dataset for training and testing
@@ -42,16 +51,16 @@ data is then assignedd a magnitude of low or high based on if it is above or bel
 There is also a function that can randomly create a smaller dataset based on the magnitude but this has to be further explored.
 The last bit of code pre-splits the training dataset selecting 80% of the data in both magnitudes for better training and testing as random sorting could include less or more valus in either phases leading to artifical low or high error rates, which the errors tend to be mostly drived by underpredictions in the high outlier data
 
-3 XGrid.py 
+# 3 XGrid.py 
 This is the first standa alone code this is a set of code that can test many permutations of XGBoost models so that one doesn't have to test them individually.
 It is good for getting a good idea of which parmaters to use but it should not be used solely for the last set of testing parameters as hyper-tuning is more delicate and encompasses more that what can be derived from these methods.
 
-XGBoost.py
+# XGBoost.py
 Uses the sklearn and xgboost packages to prepare the data for training, altough pre-processing is not neccessary for XGboost models it is useful in that it can help overcome some of the biases in the data such as the non-gaussian distribution of the remote sensing parameters and true values of the water quality paramter as they are both heavily right-skewed. Encoding also helps to overcome integer encoding as having integers with all of the available ecoregion may skew with the amount of categories available. 
 The rest of the code sets up the rest of the parameters needed to train an xgboost model, loss functions, tuning parameters, etc, then the model is trained and tested on the training split.
 A simple graph is returned for the user to be able to visualize the output of the training.
 
-DWNN.py 
+# DWNN.py 
 This code pre-pre-processes the data and then trains a deep-wide neural networks
 The preprocess uses onehot encoding for the categorical values similar to pivot wider and assigns a binary input for the categories, Min-Max scaling processes the numerical features into a scale of -1 to 1 common in many neural networks as they like inputs in these ranges, it also centers the value of the water quality paramter 0 at the median of the input data
 There are many loss functions included in this code which can be split into seperate files later on and calle into a central script for less bulky and faster code.
