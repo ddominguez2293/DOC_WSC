@@ -56,9 +56,9 @@ def mae_loss_with_penalty(y_true, y_pred, penalty=100.0):
 def dynamic_penalty_loss(y_true, y_pred):
     penalty=y_true # error penalty will increase with the true value so higher values are weighted more
     absolute_errors = tf.abs(y_true - y_pred)
-    penalty_mask = tf.cast(absolute_errors >= y_true, dtype=tf.float32) #absolute_errors >= 10.0
+    penalty_mask = tf.cast(absolute_errors >= y_true*0.7, dtype=tf.float32) #absolute_errors >= 10.0
     penalty = penalty_mask * penalty  # Apply the penalty to values greater than 10 times the actual value
-    loss = tf.reduce_mean(tf.square(absolute_errors) + penalty)
+    loss = tf.reduce_mean(absolute_errors + penalty)
     return loss
 
 def weighted_dynamic_penalty_loss(y_true, y_pred):
@@ -179,17 +179,17 @@ deep_layer_3 = tf.keras.layers.Dropout(dr)(deep_layer_3)  # Add a dropout layer 
 deep_layer_4 = tf.keras.layers.Dense(256, activation='leaky_relu')(deep_layer_3)
 deep_layer_4 = tf.keras.layers.Dropout(dr)(deep_layer_4)  # Add a dropout layer with a dropout rate 
 deep_layer_5 = tf.keras.layers.Dense(128, activation='leaky_relu')(deep_layer_4)
-deep_layer_5 = tf.keras.layers.Dropout(dr)(deep_layer_2)  # Add a dropout layer with a dropout rate 
+deep_layer_5 = tf.keras.layers.Dropout(dr)(deep_layer_5)  # Add a dropout layer with a dropout rate 
 deep_layer_6 = tf.keras.layers.Dense(64, activation='leaky_relu')(deep_layer_5)
-deep_layer_6 = tf.keras.layers.Dropout(dr)(deep_layer_3)  # Add a dropout layer with a dropout rate 
+deep_layer_6 = tf.keras.layers.Dropout(dr)(deep_layer_6)  # Add a dropout layer with a dropout rate 
 deep_layer_7 = tf.keras.layers.Dense(32, activation='leaky_relu')(deep_layer_6)
-deep_layer_7 = tf.keras.layers.Dropout(dr)(deep_layer_4)  # Add a dropout layer with a dropout rate 
+deep_layer_7 = tf.keras.layers.Dropout(dr)(deep_layer_7)  # Add a dropout layer with a dropout rate 
 deep_layer_8 = tf.keras.layers.Dense(16, activation='leaky_relu')(deep_layer_7)
-deep_layer_8 = tf.keras.layers.Dropout(dr)(deep_layer_5)  
+deep_layer_8 = tf.keras.layers.Dropout(dr)(deep_layer_8)  
 deep_layer_9 = tf.keras.layers.Dense(8, activation='leaky_relu')(deep_layer_8)
-deep_layer_9 = tf.keras.layers.Dropout(dr)(deep_layer_6) 
+deep_layer_9 = tf.keras.layers.Dropout(dr)(deep_layer_9) 
 deep_layer_10 = tf.keras.layers.Dense(4, activation='leaky_relu')(deep_layer_9)
-deep_layer_10 = tf.keras.layers.Dropout(dr)(deep_layer_7) 
+deep_layer_10 = tf.keras.layers.Dropout(dr)(deep_layer_10) 
 deep_layer_11 = tf.keras.layers.Dense(2, activation='leaky_relu')(deep_layer_10)
 
 
@@ -203,10 +203,10 @@ output_layer = tf.keras.layers.Dense(1)(concatenated)
 # Create the combined model
 model = tf.keras.Model(inputs=[wide_input_layer, deep_input_layer], outputs=output_layer)
 
-adam_optimizer = tf.keras.optimizers.Adam(learning_rate=0.001) 
+adam_optimizer = tf.keras.optimizers.Adam(learning_rate=0.00001) 
 
 # Compile the model with the custom loss function
-model.compile(optimizer='adam', loss=dynamic_penalty_loss, metrics=['mae', 'mse'],weighted_metrics=[])
+model.compile(optimizer='adam', loss=huber_loss, metrics=['mae', 'mse'],weighted_metrics=[])
 
 # Split the data into training and testing sets
 split_size = 0.2  # Tunable parameter: fraction of the dataset used for testing
@@ -247,7 +247,7 @@ sample_weights = np.select(conditions, weights, default=1.0)
 history = model.fit([train_wide, train_deep], 
                     train_labels, 
                     epochs=100000, 
-                    batch_size=64, #256
+                    batch_size=256, #256
                     validation_split=0.2,
                     sample_weight=sample_weights, 
                     callbacks=[early_stopping], 
