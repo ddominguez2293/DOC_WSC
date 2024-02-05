@@ -5,25 +5,28 @@ import tensorflow as tf
 from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
 from sklearn.metrics import mean_absolute_error
 import matplotlib.pyplot as plt
+import csv
 
 # set local path
 local_path = "/Users/danieldominguez/Documents/Code/DOC_WSC/Data/"
 
+print_path = "/Users/danieldominguez/Documents/Code/DOC_WSC/Outputs/"
+
 # Load the training data from the CSV file
-train_data = pd.read_csv(local_path+ "DOC_train_v1.csv")
+train_data = pd.read_csv(local_path+ "DOC_train_v1_nosecchi.csv")
 
 # Load the test data from the CSV file
-test_data = pd.read_csv(local_path+ "DOC_test_v1.csv")
+test_data = pd.read_csv(local_path+ "DOC_test_v1_nosecchi.csv")
 
 # Concatenate the training and test data
 data = pd.concat([train_data, test_data], ignore_index=True)
 
 # Separate the target variable (value) and drop the 'mag' column and any other identifying column
 y = data["value"]
-X = data.drop(["value", "mag","uniqueID"], axis=1)
+X = data.drop(["value", "mag","uniqueID","ecoregion", "type","season",'WC' ], axis=1)
 
 # Perform one-hot encoding for categorical variables
-categorical_cols = ["ecoregion", "type", "season",'WC']
+categorical_cols = [ ]
 X_categorical = X[categorical_cols]
 X_numerical = X.drop(categorical_cols, axis=1)
 
@@ -63,14 +66,17 @@ def weighted_dynamic_penalty_loss(y_true, y_pred):
     loss = tf.reduce_mean(absolute_errors + penalty)
     return loss
 
-
+nodes=1024 #scikit does not like replacing node integer with a variable so write it seperately for tracking
 # Define the neural network settings for regression
+
+learning_rate=0.0001
+
 model_settings = {
     "hiddens": [1024,1024,1024,1024],  # Specify the number of hidden layers and units
     "activations": [ "leaky_relu", "leaky_relu", "leaky_relu", "leaky_relu"],  # Specify the activation functions for hidden layers
     "dropout_rate": 0.2,  # Specify the dropout rate
-    "learning_rate": 0.001,  # Specify the learning rate #0.00001
-    "random_seed": 42  # Specify a random seed for reproducibility
+    "learning_rate": learning_rate,  # Specify the learning rate #0.00001
+    "random_seed": 22  # Specify a random seed for reproducibility
 }
 
 # Build the model for regression
@@ -133,7 +139,7 @@ sample_weights = np.where(y_train >= threshold, 1.0, 1.0)  # Assign higher weigh
 regression_history = regression_model.fit(
     X_train,
     y_train,
-    epochs=20000,  # Set a high number of epochs
+    epochs=200000,  # Set a high number of epochs
     batch_size=256,  # Specify the batch size
     callbacks=[early_stopping],  # Use early stopping callback,
     sample_weight=sample_weights,  # Pass the sample weights
@@ -145,7 +151,14 @@ y_pred = regression_model.predict(X_test)
 
 # Evaluate the regression model on the test data
 test_mae = mean_absolute_error(y_test, y_pred)
+# Evaluate the regression model on the test data
+test_mae = mean_absolute_error(y_test, y_pred)
+test_mse = np.mean((y_test.values.flatten() - y_pred) ** 2)  # Flatten y_test.values
+
+# Calculate RMSE
+test_rmse = np.sqrt(test_mse)
 print(f"Test Mean Absolute Error: {test_mae}")
+
 
 # Create a figure with subplots
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
@@ -176,9 +189,29 @@ ax2.set_xscale('log')
 
 # Adjust layout
 plt.tight_layout()
-
-# Show the plot
 plt.show()
 
+# filename = f"_{'_'.join(categorical_cols)}_nodes_{nodes}_learningrate_{learning_rate}"
+# plt.savefig(print_path+"Figs/" + f"regression_plot_{filename}.png")
 
-# Test Mean Absolute ErrorL 1.99
+# epochs_before_stopping = early_stopping.stopped_epoch
+
+# settings_info = {
+#     "Number of Epochs Before Early Stopping": epochs_before_stopping,
+#     "Model Settings": model_settings,
+#     "Nodes": nodes,
+#     "Categorical Columns": categorical_cols,
+#     "Test MAE": test_mae,
+#     "Test MSE": test_mse,
+#     "Test RMSE": test_rmse,
+#     "Learning Rate": learning_rate,
+# }
+
+# csv_filename = print_path + "Data/" + f"model_{filename}_settings.csv"
+
+# with open(csv_filename, mode='w', newline='') as csv_file:
+#     writer = csv.writer(csv_file)
+#     writer.writerow(["Parameter", "Value"])  # Adding header row
+
+#     for key, value in settings_info.items():
+#         writer.writerow([key, value])
