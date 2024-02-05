@@ -16,18 +16,8 @@ local_Path <- "Data/"
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
-# library(feather)
-# library(viridis)
-# library(sf)
-# library(mlbench)
-# library(caret)
-# library(xgboost)
-# library(Metrics)
-# library(data.table)
-# library(mltools)
-# library(ggthemes)
-# library(scales)
-# library(kableExtra)
+library(sf)
+library(dplyr)
 
 ```
 
@@ -39,19 +29,12 @@ data <- read_csv(file.path(local_Path, "aquasat_processed.csv")) %>%
   filter(!is.na(doc) & !is.na(secchi)) %>% # (option) filtering out rows without DOC and Secchi
   filter(pwater >= 80) %>% #filter for mostly water pixels
   filter(!type == "Facility") %>% #not enough data to be representative when splitting betwen quanitles
-  #filter(n>=10) %>% # (option) filter if there is not at least x readings for a site for better training
+  filter(n>=10) %>% # (option) filter if there is not at least x readings for a site for better training
   filter(pixelCount > 0) %>% #filter erroneous pixel counts
   mutate(value = doc) %>%  #mutate doc to target value
-  filter_all(all_vars(!is.infinite(.))) %>% # remove rows with infinites that might have resulted from band calculations
-  mutate(
-    WC = case_when(
-      red < green & red > blue ~ "Green",
-      red > green & nir > 0.01 ~ "Brown",
-      green < blue ~ "BG",
-      TRUE ~ "Green"
-    )
-  ) # Create water color classification based on literature
+  filter_all(all_vars(!is.infinite(.))) 
   
+
 ```
 
 ```{r}
@@ -137,7 +120,7 @@ rf_data<-rbind(rf_data_low,rf_data_med,rf_data_high)
 set.seed(15) # set seed for reproducibility
 
 train_v1 <- filtered_data %>%
-  group_by(mag) %>%
+  group_by( mag,ecoregion,type) %>%
   sample_frac(.8) %>%
   ungroup() %>%
   arrange(value)

@@ -15,18 +15,9 @@ local_Path <- "Data/"
 
 ```{r setup, include=FALSE}
 library(tidyverse)
-# library(feather)
-#library(viridis)
 library(sf)
-# library(mlbench)
-# library(caret)
-# library(xgboost)
-# library(Metrics)
-# library(data.table)
-# library(mltools)
-# library(ggthemes)
-# library(scales)
-# library(kableExtra)
+library(dplyr)
+library(mapview)
 ```
 
 
@@ -35,6 +26,7 @@ library(sf)
 Check for presence of Aquasat matchup file - if it doesn't exist, download it.
 
 ```{r}
+
 url <- "https://figshare.com/ndownloader/files/18733733"
 name <- "sr_wq_rs_join.csv"
 if (file.exists(file.path(local_Path, name))) {
@@ -52,14 +44,13 @@ if (file.exists(file.path(local_Path, name))) {
 
 ```{r}
 # Filter RS data to reasonable range (0-2000), images with at least 8 pixels
-RS <- read_csv(file.path(local_Path,"sr_wq_rs_join.csv")) %>% 
+RS <- read_csv(file.path(local_Path,"sr_wq_rs_join.csv")) %>% #tidy, number of pixels contributing as a cutoff
   filter(red<2000 & red>0) %>% 
-  filter(green<2000 & green>0) %>% 
-  filter(blue<2000 & blue>0) %>% 
-  filter(swir1<2000 & swir1>0) %>% 
-  filter(swir2<2000 & swir2>0) %>% 
+  filter(green<2000 &green>0) %>% 
+  filter(blue<2000 &blue>0) %>% 
+  filter(swir1<2000 &swir1>0) %>% 
+  filter(swir2<2000 &swir2>0) %>% 
   filter(nir<2000 & nir>0) %>% 
-  filter(pixelCount > 8) %>% 
   mutate(NR=nir/red, #calculate the bands in JG new study
          BR=blue/red,
          GR=green/red,
@@ -110,15 +101,28 @@ RS <- read_csv(file.path(local_Path,"sr_wq_rs_join.csv")) %>%
          NDWI=((green - swir1)/(green + swir1)),
          NDSSI=((blue - nir)/ (blue + nir)),
          GNGN=((green- nir)/ (green + nir))) %>% 
-  mutate(uniqueID = row_number())
+    mutate(uniqueID = row_number())
 ```
 
 ```{r}
+
+  dplyr::mutate(uniqueID = row_number())%>% # remove rows with infinites that might have resulted from band calculations
+  mutate(
+    WC = case_when(
+      red < green & red > blue ~ "Green",
+      red > green & nir > 0.01 ~ "Brown",
+      green < blue ~ "BG",
+      TRUE ~ "Green"
+    )
+  )
+
+
 ## Read in and convert the sites to extract the ecoregion they are located in
 sites <- RS %>% 
   select(SiteID,lat, long, type) %>%  
   unique() %>% 
   st_as_sf(coords=c("long","lat"), crs=4269) 
+
 
 url <- "https://gaftp.epa.gov/EPADataCommons/ORD/Ecoregions/cec_na/na_cec_eco_l1.zip"
 name <- "na_cec_eco_l1.zip"
@@ -133,11 +137,19 @@ if (file.exists(file.path(local_Path, "ecoregions/NA_CEC_Eco_Level1.shp"))) {
   unlink(file.path(local_Path, "ecoregions", name))
 }
 
+
+EcoRegions<-st_read(dsn=paste0(local_Path,"ecoregions/NA_CEC_Eco_Level1.shp")) 
+
+
 EcoRegions <- st_read(dsn=paste0(local_Path,"ecoregions/NA_CEC_Eco_Level1.shp")) #Load ecoregions
 
 EcoRegions_sf <- EcoRegions %>% 
   st_transform(crs = 4269) %>% 
-  st_make_valid()
+  st_make_valid() #Extract the ecoregion for each site
+  
+Ecoregions_buffer<-EcoRegions_sf %>% 
+  st_buffer( dist = 1)
+
 
 ```
 
@@ -147,6 +159,23 @@ site_ecoregions<-st_join(sites,EcoRegions_sf) # merge the ecoregion to dataset
 
 ggplot(site_ecoregions, aes(color = NA_L1NAME, shape = type)) + 
   geom_sf()
+
+Sites_remaining<-site_ecoregions %>% 
+  filter(is.na(NA_L1NAME)) %>% 
+  select(-NA_L1NAME,-NA_L1CODE,-NA_L1KEY,-Shape_Leng,-Shape_Area)
+
+sites_ecoregion_buffered<-st_join(Sites_remaining,Ecoregions_buffer)
+
+sites_ecoregion_buffered[is.na(sites_ecoregion_buffered)] <- "COASTAL"# mutate the NA category that is sites along the coastline to Coastal for ecoregion grouping
+
+# Deduplicate based on SiteID
+deduplicated_site_ecoregions <- sites_ecoregion_buffered %>%
+  as.data.frame() %>% 
+  group_by(SiteID) %>%
+  mutate(n_ecoregions = n_distinct(NA_L1NAME)) %>%
+  distinct(SiteID, .keep_all = TRUE) %>%
+  select(SiteID,NA_L1NAME)
+
 
 site_ecoregions <- site_ecoregions %>% 
   mutate(NA_L1NAME = if_else(is.na(NA_L1NAME),
@@ -159,10 +188,18 @@ site_ecoregions <- site_ecoregions %>%
   select(SiteID,
          ecoregion=NA_L1NAME)
 
+site_ecoregions<-rbind(site_ecoregions,deduplicated_site_ecoregions) %>%  
+  dplyr::select(SiteID,ecoregion=NA_L1NAME) %>% 
+  filter(!is.na(ecoregion)) 
+
+
 RS <- left_join(RS,site_ecoregions,by="SiteID")# Join ecoregions to dataset
 ```
 
+<<<<<<< HEAD
 Apply season string to date 
+=======
+>>>>>>> d23f4a7 (fixed coastal sites)
 
 ```{r}
 get_season <- function(date_str) {
@@ -193,5 +230,6 @@ site_count<-RS %>%
 RS<-left_join(RS,site_count,by="SiteID") # join to dataset
 
 write_csv(RS, file.path(local_Path,"aquasat_processed.csv"))
+
 ```
 
