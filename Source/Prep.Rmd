@@ -9,7 +9,7 @@ editor_options:
 ### The best way to describe how the training framework works/ was designed is by thikning about car engine tuning for an automatic transmission. As the DOC (or water quality parameter) increases the AI model switches similar to what occurs when you step on the gas and the car switches gears. In this case each of the AI models can be thought about as a gear in the transmission. The statistics of another AI predicting a measurement in a different quanitle also back up how this works but will be explained below. 
 
 ```{r}
-local_Path <- "Data/"
+local_Path <- "/Users/danieldominguez/Documents/Code/DOC_WSC/Data/"
 
 ```
 
@@ -24,7 +24,7 @@ library(dplyr)
 
 ```{r prep}
 # filter data
-data <- read_csv(file.path(local_Path, "aquasat_processed.csv")) %>%
+data <- read_csv(file.path(local_Path, "aquasat_processed.csv"),show_col_types = FALSE) %>%
   #filter(!is.na(doc)) %>% # remove rows without DOC data
   filter(!is.na(doc) & !is.na(secchi)) %>% # (option) filtering out rows without DOC and Secchi
   filter(pwater >= 80) %>% #filter for mostly water pixels
@@ -34,8 +34,19 @@ data <- read_csv(file.path(local_Path, "aquasat_processed.csv")) %>%
   mutate(value = doc) %>%  #mutate doc to target value
   filter_all(all_vars(!is.infinite(.))) 
   
+```
+
+```{r}
+#optional ecoregion filtering to make sure there are enough observations after other filtering
+ecoregion_n<-data %>% 
+  group_by(ecoregion) %>% 
+  summarise(ecoregion_n=n())
+
+data<-left_join(data,ecoregion_n) %>% 
+  filter(ecoregion_n>=100)
 
 ```
+
 
 ```{r}
 bands <- c("red", "green","blue", "swir1", "swir2","nir",

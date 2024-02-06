@@ -1,0 +1,102 @@
+---
+title: "Post_Pred_Analysis"
+author: "Daniel Dominguez"
+date: "2024-02-06"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+```
+
+```{r}
+local_path<- "/Users/danieldominguez/Documents/Code/DOC_WSC/"
+```
+
+```{r}
+processed_preds<-read_csv(file.path(local_path,"Outputs/Data/test_data_with_predictions.csv"))
+```
+
+```{r}
+## Create the plot
+ggplot(processed_preds, aes(x = value, y = predicted_value, color = type,)) +
+  
+  # Scatterplot
+  geom_point(size = 0.5) +
+  
+  # Add a dashed one-to-one line
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  
+  # Set log scale on both axes with limits
+  scale_x_log10(limits = c(1, 100)) +
+  scale_y_log10(limits = c(1, 100)) +
+  
+  # Add labels and title
+  labs(x = "True Value", y = "Predicted Value") +
+  
+  # Customize theme if needed
+  theme_minimal()
+```
+
+```{r}
+## Create the plot
+ggplot(processed_preds, aes(x = value, y = predicted_value, color = ecoregion,)) +
+  
+  # Scatterplot
+  geom_point(size = 0.2) +
+  
+  # Add a dashed one-to-one line
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  
+  # Set log scale on both axes with limits
+  scale_x_log10(limits = c(1, 100)) +
+  scale_y_log10(limits = c(1, 100)) +
+  
+  # Add labels and title
+  labs(x = "True Value", y = "Predicted Value") +
+  
+  # Customize theme if needed
+  theme_minimal()+
+  facet_wrap(facets = "ecoregion")
+```
+
+```{r}
+test_ecoregion_counts<-processed_preds %>% 
+  group_by(ecoregion) %>% 
+  summarise(n=n())
+
+test_type_counts<-processed_preds %>% 
+  group_by(type) %>% 
+  summarise(n=n())
+
+```
+
+```{r}
+train_set<-read_csv(file.path(local_path,"Data/DOC_train_v1_nosecchi.csv"))
+```
+
+```{r}
+train_ecoregion_counts<-train_set %>% 
+  group_by(ecoregion) %>% 
+  summarise(n_train=n()) %>% 
+  select(-ecoregion) 
+
+train_type_counts<-train_set %>% 
+  group_by(type) %>%  
+  summarise(n_train=n()) %>% 
+  select(-type) 
+```
+
+```{r}
+type_counts_combined<-cbind(test_type_counts,train_type_counts) %>% 
+  mutate(percent_rep=n/n_train)
+
+ecoregion_counts_combined<-cbind(test_ecoregion_counts,train_ecoregion_counts) %>% 
+  mutate(percent_rep=n/n_train)
+  
+```
+

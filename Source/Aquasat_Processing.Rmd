@@ -8,7 +8,7 @@ editor_options:
 ---
 
 ```{r}
-local_Path <- "Data/"
+local_Path<- ("/Users/danieldominguez/Documents/Code/DOC_WSC/Data/") 
 
 ```
 
@@ -27,17 +27,17 @@ Check for presence of Aquasat matchup file - if it doesn't exist, download it.
 
 ```{r}
 
-url <- "https://figshare.com/ndownloader/files/18733733"
-name <- "sr_wq_rs_join.csv"
-if (file.exists(file.path(local_Path, name))) {
-  "The Aquasat file has already been downloaded."
-} else {
-  # the download will take some time.
-  options(timeout=10000)
-  download.file(url = url, 
-                destfile = file.path(local_Path, name))
-  "The Aquasat file has been downloaded"
-}
+# url <- "https://figshare.com/ndownloader/files/18733733"
+# name <- "sr_wq_rs_join.csv"
+# if (file.exists(file.path(local_Path, name))) {
+#   "The Aquasat file has already been downloaded."
+# } else {
+#   # the download will take some time.
+#   options(timeout=10000)
+#   download.file(url = url, 
+#                 destfile = file.path(local_Path, name))
+#   "The Aquasat file has been downloaded"
+# }
 ```
 
 # High-level QAQC
@@ -105,7 +105,7 @@ RS <- read_csv(file.path(local_Path,"sr_wq_rs_join.csv")) %>% #tidy, number of p
 ```
 
 ```{r}
-
+RS<-RS %>% 
   dplyr::mutate(uniqueID = row_number())%>% # remove rows with infinites that might have resulted from band calculations
   mutate(
     WC = case_when(
@@ -124,25 +124,23 @@ sites <- RS %>%
   st_as_sf(coords=c("long","lat"), crs=4269) 
 
 
-url <- "https://gaftp.epa.gov/EPADataCommons/ORD/Ecoregions/cec_na/na_cec_eco_l1.zip"
-name <- "na_cec_eco_l1.zip"
-if (file.exists(file.path(local_Path, "ecoregions/NA_CEC_Eco_Level1.shp"))) {
-  "The ecoregion file has already been downloaded."
-} else {
-  dir.create(file.path(local_Path, "ecoregions"))
-  download.file(url = url, 
-                destfile = file.path(local_Path, "ecoregions", name))
-  unzip(file.path(local_Path, "ecoregions", name), 
-        exdir = file.path(local_Path, "ecoregions"))
-  unlink(file.path(local_Path, "ecoregions", name))
-}
+# url <- "https://gaftp.epa.gov/EPADataCommons/ORD/Ecoregions/cec_na/na_cec_eco_l1.zip"
+# name <- "na_cec_eco_l1.zip"
+# if (file.exists(file.path(local_Path, "ecoregions/NA_CEC_Eco_Level1.shp"))) {
+#   "The ecoregion file has already been downloaded."
+# } else {
+#   dir.create(file.path(local_Path, "ecoregions"))
+#   download.file(url = url, 
+#                 destfile = file.path(local_Path, "ecoregions", name))
+#   unzip(file.path(local_Path, "ecoregions", name), 
+#         exdir = file.path(local_Path, "ecoregions"))
+#   unlink(file.path(local_Path, "ecoregions", name))
+# }
 
 
-EcoRegions<-st_read(dsn=paste0(local_Path,"ecoregions/NA_CEC_Eco_Level1.shp")) 
-
-
-EcoRegions <- st_read(dsn=paste0(local_Path,"ecoregions/NA_CEC_Eco_Level1.shp")) #Load ecoregions
-
+EcoRegions <- st_read(dsn=paste0(local_Path,"ecoregions/NA_CEC_Eco_Level1.shp")) %>%  #Load ecoregions
+  rowid_to_column()
+  
 EcoRegions_sf <- EcoRegions %>% 
   st_transform(crs = 4269) %>% 
   st_make_valid() #Extract the ecoregion for each site
@@ -150,56 +148,47 @@ EcoRegions_sf <- EcoRegions %>%
 Ecoregions_buffer<-EcoRegions_sf %>% 
   st_buffer( dist = 1)
 
-
+Ecoregions_rowID<-EcoRegions %>% 
+  select(rowid,NA_L1NAME) %>% 
+  st_drop_geometry() %>% 
+  mutate()
 ```
 
 ```{r}
 #Extract the ecoregion for each site
 site_ecoregions<-st_join(sites,EcoRegions_sf) # merge the ecoregion to dataset
 
-ggplot(site_ecoregions, aes(color = NA_L1NAME, shape = type)) + 
-  geom_sf()
 
 Sites_remaining<-site_ecoregions %>% 
-  filter(is.na(NA_L1NAME)) %>% 
-  select(-NA_L1NAME,-NA_L1CODE,-NA_L1KEY,-Shape_Leng,-Shape_Area)
+  filter(is.na(NA_L1NAME))%>% 
+  dplyr::select(-NA_L1NAME)
 
-sites_ecoregion_buffered<-st_join(Sites_remaining,Ecoregions_buffer)
+#Retrieve the nearest ecoregion which is named rowid matching the previous rowid to column
+Sites_remaining$rowid<-st_nearest_feature(Sites_remaining,EcoRegions_sf) 
 
-sites_ecoregion_buffered[is.na(sites_ecoregion_buffered)] <- "COASTAL"# mutate the NA category that is sites along the coastline to Coastal for ecoregion grouping
+Sites_remaining<-left_join(Sites_remaining,Ecoregions_rowID,by="rowid") 
 
 # Deduplicate based on SiteID
-deduplicated_site_ecoregions <- sites_ecoregion_buffered %>%
+Sites_remaining <- Sites_remaining %>%
   as.data.frame() %>% 
-  group_by(SiteID) %>%
-  mutate(n_ecoregions = n_distinct(NA_L1NAME)) %>%
   distinct(SiteID, .keep_all = TRUE) %>%
-  select(SiteID,NA_L1NAME)
-
-
-site_ecoregions <- site_ecoregions %>% 
-  mutate(NA_L1NAME = if_else(is.na(NA_L1NAME),
-                             "COASTAL",
-                             NA_L1NAME))
-# site_ecoregions[is.na(site_ecoregions)] <- "COASTAL"# mutate the NA category that is sites along the coastline to Coastal for ecoregion grouping
+  select(SiteID,ecoregion=NA_L1NAME)
 
 site_ecoregions <- site_ecoregions %>% 
+  filter(!is.na(NA_L1NAME)) %>% 
   as.data.frame() %>% 
   select(SiteID,
          ecoregion=NA_L1NAME)
 
-site_ecoregions<-rbind(site_ecoregions,deduplicated_site_ecoregions) %>%  
-  dplyr::select(SiteID,ecoregion=NA_L1NAME) %>% 
+site_ecoregions<-rbind(site_ecoregions,Sites_remaining) %>%  
+  dplyr::select(SiteID,ecoregion) %>% 
   filter(!is.na(ecoregion)) 
 
 
 RS <- left_join(RS,site_ecoregions,by="SiteID")# Join ecoregions to dataset
-```
 
-<<<<<<< HEAD
-Apply season string to date 
-=======
->>>>>>> d23f4a7 (fixed coastal sites)
+
+```
 
 ```{r}
 get_season <- function(date_str) {
