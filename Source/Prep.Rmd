@@ -25,8 +25,8 @@ library(dplyr)
 ```{r prep}
 # filter data
 data <- read_csv(file.path(local_Path, "aquasat_processed.csv"),show_col_types = FALSE) %>%
-  #filter(!is.na(doc)) %>% # remove rows without DOC data
-  filter(!is.na(doc) & !is.na(secchi)) %>% # (option) filtering out rows without DOC and Secchi
+  filter(!is.na(doc)) %>% # remove rows without DOC data
+  #filter(!is.na(doc) & !is.na(secchi)) %>% # (option) filtering out rows without DOC and Secchi
   filter(pwater >= 80) %>% #filter for mostly water pixels
   filter(!type == "Facility") %>% #not enough data to be representative when splitting betwen quanitles
   filter(n>=10) %>% # (option) filter if there is not at least x readings for a site for better training
@@ -68,7 +68,7 @@ features <- c("red", "blue","GS","green",
               "NR","N_S", "RGB","ecoregion", "type","season","WC")  #Narrower features
 
 filtered_data <- data %>%
-  select(features, value, uniqueID, SiteID, ecoregion, type, season, WC, secchi) %>% 
+  select(features, value, uniqueID, SiteID, ecoregion, type, season, WC) %>% 
   mutate_if(is.character,as.factor) 
 
 #This will create a "magnitude label if below a threshold low if above high for better train test split 
@@ -105,17 +105,17 @@ random_filter_data <- function(df, column_name, condition, filter_percentage, se
 
 # this is an experimental split I was using to artificially reduce the amount of low observations similar to Gardner et al., 2023
 rf_data_low<-random_filter_data(filtered_data, 'value', function(x) x > 0 & x < 10, filter_percentage = 0.95, seed = 01) %>% 
-  dplyr::select(features, value, uniqueID,ecoregion, type,season,WC,secchi) %>% 
+  dplyr::select(features, value, uniqueID,ecoregion, type,season,WC) %>% 
   mutate(mag="low")
 
 rf_data_med<-random_filter_data(filtered_data, 'value', function(x) x > 10 & x < 40, filter_percentage = 0.9, seed = 01) %>% 
-  dplyr::select(features, value, uniqueID,ecoregion, type,season,WC,secchi)%>% 
+  dplyr::select(features, value, uniqueID,ecoregion, type,season,WC)%>% 
   mutate(mag="low")
 
 #We keep all the data that is a high outlier
 rf_data_high<- data %>% 
   filter(value>=40) %>% 
-  dplyr::select(features, value, uniqueID, ecoregion, type, season, WC, secchi)%>% 
+  dplyr::select(features, value, uniqueID, ecoregion, type, season, WC)%>% 
   mutate(mag="high")
 
 rf_data<-rbind(rf_data_low,rf_data_med,rf_data_high)

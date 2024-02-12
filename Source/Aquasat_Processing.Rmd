@@ -138,7 +138,7 @@ sites <- RS %>%
 # }
 
 
-EcoRegions <- st_read(dsn=paste0(local_Path,"ecoregions/NA_CEC_Eco_Level1.shp")) %>%  #Load ecoregions
+EcoRegions <- st_read(dsn=paste0(local_Path,"ecoregions/NA_CEC_Eco_Level2.shp")) %>%  #Load ecoregions
   rowid_to_column()
   
 EcoRegions_sf <- EcoRegions %>% 
@@ -149,9 +149,11 @@ Ecoregions_buffer<-EcoRegions_sf %>%
   st_buffer( dist = 1)
 
 Ecoregions_rowID<-EcoRegions %>% 
-  select(rowid,NA_L1NAME) %>% 
+  select(rowid,NA_L2NAME) %>% #change between NA_l!NAME and NA_L2NAME for level 1 or two
   st_drop_geometry() %>% 
   mutate()
+
+mapview(EcoRegions_sf)
 ```
 
 ```{r}
@@ -160,8 +162,8 @@ site_ecoregions<-st_join(sites,EcoRegions_sf) # merge the ecoregion to dataset
 
 
 Sites_remaining<-site_ecoregions %>% 
-  filter(is.na(NA_L1NAME))%>% 
-  dplyr::select(-NA_L1NAME)
+  filter(is.na(NA_L2NAME))%>% 
+  dplyr::select(-NA_L2NAME)
 
 #Retrieve the nearest ecoregion which is named rowid matching the previous rowid to column
 Sites_remaining$rowid<-st_nearest_feature(Sites_remaining,EcoRegions_sf) 
@@ -172,13 +174,13 @@ Sites_remaining<-left_join(Sites_remaining,Ecoregions_rowID,by="rowid")
 Sites_remaining <- Sites_remaining %>%
   as.data.frame() %>% 
   distinct(SiteID, .keep_all = TRUE) %>%
-  select(SiteID,ecoregion=NA_L1NAME)
+  select(SiteID,ecoregion=NA_L2NAME)
 
 site_ecoregions <- site_ecoregions %>% 
-  filter(!is.na(NA_L1NAME)) %>% 
+  filter(!is.na(NA_L2NAME)) %>% 
   as.data.frame() %>% 
   select(SiteID,
-         ecoregion=NA_L1NAME)
+         ecoregion=NA_L2NAME)
 
 site_ecoregions<-rbind(site_ecoregions,Sites_remaining) %>%  
   dplyr::select(SiteID,ecoregion) %>% 
@@ -192,22 +194,29 @@ RS <- left_join(RS,site_ecoregions,by="SiteID")# Join ecoregions to dataset
 
 ```{r}
 get_season <- function(date_str) {
-  month <- month(date_str)
+  # Remove the time zone offset 'Z' from the input string
+  date_str <- gsub("Z$", "", date_str)
   
-  # Determine the season based on the month following water year; Fall October-December and so on
-  if (month %in% c(1, 2, 3)) {
+  # Parse the date string using the format "%Y-%m-%dT%H:%M:%S"
+  date <- as.POSIXct(date_str, format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
+  month <- month(date)
+  
+  # Determine the season based on the month
+  if (month %in% c(12, 1, 2)) {
     return("Winter")
-  } else if (month %in% c(4, 5, 6)) {
+  } else if (month %in% c(3, 4, 5)) {
     return("Spring")
-  } else if (month %in% c(7, 8, 9)) {
+  } else if (month %in% c(6, 7, 8)) {
     return("Summer")
   } else {
     return("Fall")
   }
 }
+```
 
+```{r}
 RS <- RS %>%
-  mutate(season = map(date, get_season))
+  mutate(season = sapply(date_unity, get_season))
 ```
 
 
