@@ -13,20 +13,20 @@ local_path = "/Users/danieldominguez/Documents/Code/DOC_WSC/Data/"
 print_path = "/Users/danieldominguez/Documents/Code/DOC_WSC/Outputs/"
 
 # Load the training data from the CSV file
-train_data = pd.read_csv(local_path+ "DOC_train_v1_nosecchi.csv")
+train_data = pd.read_csv(local_path+ "DOC_train_v1_secchi.csv")
 
 # Load the test data from the CSV file
-test_data = pd.read_csv(local_path+ "DOC_test_v1_nosecchi.csv")
+test_data = pd.read_csv(local_path+ "DOC_test_v1_secchi.csv")
 
 # Concatenate the training and test data
 data = pd.concat([train_data, test_data], ignore_index=True)
 
 # Separate the target variable (value) and drop the 'mag' column and any other identifying column
 y = data["value"]
-X = data.drop(["value", "mag","uniqueID","ecoregion", "type","season",'WC' ], axis=1)
+X = data.drop(["value", "mag","uniqueID", ], axis=1)
 
 # Perform one-hot encoding for categorical variables
-categorical_cols = [ ]
+categorical_cols = ["ecoregion",  "type","season",'WC' ]
 X_categorical = X[categorical_cols]
 X_numerical = X.drop(categorical_cols, axis=1)
 
@@ -48,7 +48,11 @@ X_test = X_processed[len(train_data):]
 y_train = y[:len(train_data)]
 y_test = y[len(train_data):]
 
-
+# Mean average error loss
+def mae_loss(y_true, y_pred):
+    # Calculate the Mean Absolute Error (MAE)
+    loss = tf.reduce_mean(tf.abs(y_true - y_pred))
+    return loss
 
 def dynamic_penalty_loss(y_true, y_pred):
     penalty=y_true
@@ -140,7 +144,7 @@ regression_history = regression_model.fit(
     X_train,
     y_train,
     epochs=200000,  # Set a high number of epochs
-    batch_size=256,  # Specify the batch size
+    batch_size=64,  # Specify the batch size
     callbacks=[early_stopping],  # Use early stopping callback,
     sample_weight=sample_weights,  # Pass the sample weights
     shuffle=True,
@@ -191,27 +195,34 @@ ax2.set_xscale('log')
 plt.tight_layout()
 plt.show()
 
-# filename = f"_{'_'.join(categorical_cols)}_nodes_{nodes}_learningrate_{learning_rate}"
-# plt.savefig(print_path+"Figs/" + f"regression_plot_{filename}.png")
+# Add a new column to the test_data dataframe for predictions
+test_data['predicted_value'] = y_pred
 
-# epochs_before_stopping = early_stopping.stopped_epoch
+# Now the 'test_data' dataframe contains both the actual 'value' column and the predicted values
+# You can save this dataframe to a CSV file if needed
+test_data.to_csv(print_path + "Data/"  + "test_data_with_predictions.csv", index=False)
 
-# settings_info = {
-#     "Number of Epochs Before Early Stopping": epochs_before_stopping,
-#     "Model Settings": model_settings,
-#     "Nodes": nodes,
-#     "Categorical Columns": categorical_cols,
-#     "Test MAE": test_mae,
-#     "Test MSE": test_mse,
-#     "Test RMSE": test_rmse,
-#     "Learning Rate": learning_rate,
-# }
+filename = f"_{'_'.join(categorical_cols)}_nodes_{nodes}_learningrate_{learning_rate}"
+plt.savefig(print_path+"Figs/" + f"E2_secchi_regression_plot_{filename}.png")
 
-# csv_filename = print_path + "Data/" + f"model_{filename}_settings.csv"
+epochs_before_stopping = early_stopping.stopped_epoch
 
-# with open(csv_filename, mode='w', newline='') as csv_file:
-#     writer = csv.writer(csv_file)
-#     writer.writerow(["Parameter", "Value"])  # Adding header row
+settings_info = {
+    "Number of Epochs Before Early Stopping": epochs_before_stopping,
+    "Model Settings": model_settings,
+    "Nodes": nodes,
+    "Categorical Columns": categorical_cols,
+    "Test MAE": test_mae,
+    "Test MSE": test_mse,
+    "Test RMSE": test_rmse,
+    "Learning Rate": learning_rate,
+}
 
-#     for key, value in settings_info.items():
-#         writer.writerow([key, value])
+csv_filename = print_path + "Data/" + f"model_{filename}_settings.csv"
+
+with open(csv_filename, mode='w', newline='') as csv_file:
+    writer = csv.writer(csv_file)
+    writer.writerow(["Parameter", "Value"])  # Adding header row
+
+    for key, value in settings_info.items():
+        writer.writerow([key, value])

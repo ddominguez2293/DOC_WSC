@@ -121,13 +121,13 @@ def dynamic_reward_loss(y_true, y_pred):
     return loss
 
 # Read in the data file
-data = pd.read_csv(local_path + "aquasat_full.csv")
+data = pd.read_csv(local_path + "aquasat_full_secchi.csv")
 
 # Select the feature to predict as the label
 labels = np.array(data['value'])
 
 # Drop the 'uniqueID' column and the label column
-features = data.drop(['value', 'uniqueID', 'mag'], axis=1)
+features = data.drop(['value', 'uniqueID', 'mag',"SiteID"], axis=1)
 
 # One-hot encode categorical features
 categorical_columns = ['ecoregion', 'type', 'season', 'WC']
@@ -203,10 +203,10 @@ output_layer = tf.keras.layers.Dense(1)(concatenated)
 # Create the combined model
 model = tf.keras.Model(inputs=[wide_input_layer, deep_input_layer], outputs=output_layer)
 
-adam_optimizer = tf.keras.optimizers.Adam(learning_rate=0.00001) 
+adam_optimizer = tf.keras.optimizers.Adam(learning_rate=0.001) 
 
 # Compile the model with the custom loss function
-model.compile(optimizer='adam', loss=huber_loss, metrics=['mae', 'mse'],weighted_metrics=[])
+model.compile(optimizer='adam', loss=dynamic_penalty_loss, metrics=['mae', 'mse'],weighted_metrics=[])
 
 # Split the data into training and testing sets
 split_size = 0.2  # Tunable parameter: fraction of the dataset used for testing

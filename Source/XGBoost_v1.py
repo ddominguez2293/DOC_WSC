@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
 
 # Load the training data from the saved CSV file
-train_df = pd.read_csv("/Users/danieldominguez/Documents/Code/DOC_WSC/Data/DOC_train_v1.csv")
+train_df = pd.read_csv("/Users/danieldominguez/Documents/Code/DOC_WSC/Data/DOC_train_v1_secchi.csv")
 
 # Load the testing dataset with features
-test_df = pd.read_csv("/Users/danieldominguez/Documents/Code/DOC_WSC/Data/DOC_test_v1.csv")
+test_df = pd.read_csv("/Users/danieldominguez/Documents/Code/DOC_WSC/Data/DOC_test_v1_secchi.csv")
 
 # Remove 'mag' from both DataFrames
 train_df = train_df.drop(['mag', 'uniqueID'], axis=1)
@@ -89,9 +89,9 @@ def mae_metric(preds, dtrain):
     return 'mean_absolute_error', mean_absolute_error
 
 xgb_regressor = xgb.XGBRegressor(
-    n_estimators=2000,# How many boosting rounds, default 200 based on grid search
+    n_estimators=5000,# How many boosting rounds, default 200 based on grid search
     max_depth=20, #How many features should a branch be able to use, default 10 based on grid search
-    learning_rate=0.01,# How fast should the model learn, default 0.1 based on grid search
+    learning_rate=0.001,# How fast should the model learn, default 0.1 based on grid search
     random_state=22, # random seed for reproducibility
 )
 
