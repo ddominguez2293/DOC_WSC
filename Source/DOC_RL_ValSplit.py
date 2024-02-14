@@ -6,53 +6,61 @@ from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
 from sklearn.metrics import mean_absolute_error
 import matplotlib.pyplot as plt
 import csv
+
 # Set local paths
 local_path = "/Users/danieldominguez/Documents/Code/DOC_WSC/Data/"
 
 print_path = "/Users/danieldominguez/Documents/Code/DOC_WSC/Outputs/"
 
-# Load the training data from the CSV file
-train_data = pd.read_csv(local_path+ "DOC_train_v1.csv")
+# Load the pre-split training, validation, and test data from the CSV files
+train_data = pd.read_csv(local_path + "DOC_train_v1.csv")
+validation_data = pd.read_csv(local_path + "DOC_validation_v1.csv")
+test_data = pd.read_csv(local_path + "DOC_test_v1.csv")
 
-# Load the test data from the CSV file
-test_data = pd.read_csv(local_path+ "DOC_test_v1.csv")
-
-# Separate the target variable (value) and drop the 'mag' column and any other identifying column for both training and test data
+# Separate the target variable (value) and drop the 'mag' column and any other identifying column
 y_train = train_data["value"]
 X_train = train_data.drop(["value", "mag", "uniqueID"], axis=1)
+
+y_validation = validation_data["value"]
+X_validation = validation_data.drop(["value", "mag", "uniqueID"], axis=1)
 
 y_test = test_data["value"]
 X_test = test_data.drop(["value", "mag", "uniqueID"], axis=1)
 
-# Perform one-hot encoding for categorical variables separately for training and test data
+# Perform one-hot encoding for categorical variables
 categorical_cols = ["ecoregion", "type", "season", "WC"]
-encoder = OneHotEncoder(sparse=False)
-
 X_train_categorical = X_train[categorical_cols]
-X_train_categorical_encoded = encoder.fit_transform(X_train_categorical)
-
+X_validation_categorical = X_validation[categorical_cols]
 X_test_categorical = X_test[categorical_cols]
+
+encoder = OneHotEncoder(sparse=False)
+X_train_categorical_encoded = encoder.fit_transform(X_train_categorical)
+X_validation_categorical_encoded = encoder.transform(X_validation_categorical)
 X_test_categorical_encoded = encoder.transform(X_test_categorical)
 
-# Perform min-max scaling from -1 to 1 on numerical features separately for training and test data
+# Perform min-max scaling from -1 to 1 on numerical features
 scaler = MinMaxScaler(feature_range=(-1, 1))
-
 X_train_numerical = X_train.drop(categorical_cols, axis=1)
-X_train_numerical_scaled = scaler.fit_transform(X_train_numerical)
-
+X_validation_numerical = X_validation.drop(categorical_cols, axis=1)
 X_test_numerical = X_test.drop(categorical_cols, axis=1)
+
+X_train_numerical_scaled = scaler.fit_transform(X_train_numerical)
+X_validation_numerical_scaled = scaler.transform(X_validation_numerical)
 X_test_numerical_scaled = scaler.transform(X_test_numerical)
 
-# Combine encoded categorical and scaled numerical features for training and test data
+# Combine encoded categorical and scaled numerical features
 X_train_processed = np.hstack((X_train_categorical_encoded, X_train_numerical_scaled))
+X_validation_processed = np.hstack((X_validation_categorical_encoded, X_validation_numerical_scaled))
 X_test_processed = np.hstack((X_test_categorical_encoded, X_test_numerical_scaled))
 
 # Split the data into training and test sets based on the shape of the original datasets
 X_train = X_train_processed[:len(train_data)]
+X_validate= X_validation_processed[:len(train_data)]
 X_test = X_test_processed[:len(test_data)]
 
 # Split the target variable (value) into training and test sets
 y_train = y_train[:len(train_data)]
+y_validate=y_validation[:len(train_data)]
 y_test = y_test[:len(test_data)]
 
 # Mean average error loss
@@ -134,7 +142,7 @@ def compile_model(model, settings):
 # Early Stopping Callback
 early_stopping = tf.keras.callbacks.EarlyStopping(
     monitor='loss',  # Monitor validation loss
-    patience=50,  # Number of epochs with no improvement to wait before stopping
+    patience=25,  # Number of epochs with no improvement to wait before stopping
     restore_best_weights=True  # Restore the model weights from the epoch with the best validation loss
 )
 
@@ -151,7 +159,8 @@ regression_history = regression_model.fit(
     X_train,
     y_train,
     epochs=20000,  # Set a high number of epochs
-    batch_size=512,  # Specify the batch size
+    batch_size=64,  # Specify the batch size
+    validation_data=(X_validation_processed, y_validation),  # Pass the validation data
     callbacks=[early_stopping],  # Use early stopping callback,
     sample_weight=sample_weights,  # Pass the sample weights
     shuffle=True,
