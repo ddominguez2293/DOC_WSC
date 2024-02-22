@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
 
 # Load the training data from the saved CSV file
-train_df = pd.read_csv("/Users/danieldominguez/Documents/Code/DOC_WSC/Data/DOC_train_v1_secchi.csv")
+train_df = pd.read_csv("/Users/danieldominguez/Documents/Code/DOC_WSC/Data/TSS_train_v1.csv")
 
 # Load the testing dataset with features
-test_df = pd.read_csv("/Users/danieldominguez/Documents/Code/DOC_WSC/Data/DOC_test_v1_secchi.csv")
+test_df = pd.read_csv("/Users/danieldominguez/Documents/Code/DOC_WSC/Data/TSS_test_v1.csv")
 
 # Remove 'mag' from both DataFrames
 train_df = train_df.drop(['mag', 'uniqueID'], axis=1)

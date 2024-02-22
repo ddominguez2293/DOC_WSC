@@ -13,9 +13,9 @@ local_path = "/Users/danieldominguez/Documents/Code/DOC_WSC/Data/"
 print_path = "/Users/danieldominguez/Documents/Code/DOC_WSC/Outputs/"
 
 # Load the pre-split training, validation, and test data from the CSV files
-train_data = pd.read_csv(local_path + "DOC_train_v1.csv")
-validation_data = pd.read_csv(local_path + "DOC_validation_v1.csv")
-test_data = pd.read_csv(local_path + "DOC_test_v1.csv")
+train_data = pd.read_csv(local_path + "DOC_Secchi_train_v1.csv")
+validation_data = pd.read_csv(local_path + "DOC_Secchi_validation_v1.csv")
+test_data = pd.read_csv(local_path + "DOC_Secchi_test_v1.csv")
 
 # Separate the target variable (value) and drop the 'mag' column and any other identifying column
 y_train = train_data["value"]
@@ -78,9 +78,9 @@ def dynamic_penalty_loss(y_true, y_pred):
     return loss
 
 def weighted_dynamic_penalty_loss(y_true, y_pred):
-    penalty = tf.where(y_true < 10, y_true * 3, y_true)
+    penalty = tf.where(y_true < 10, y_true * 0.5, y_true)
     absolute_errors = tf.abs(y_true - y_pred)
-    penalty_mask = tf.cast(absolute_errors <= 10, dtype=tf.float32) #absolute_errors <= 10.0
+    penalty_mask = tf.cast(absolute_errors >= y_true*0.7, dtype=tf.float32) #absolute_errors <= 10.0
     penalty = penalty_mask * penalty  # Apply the penalty to values greater than 10 times the actual value
     loss = tf.reduce_mean(absolute_errors + penalty)
     return loss
@@ -141,7 +141,7 @@ def compile_model(model, settings):
 
 # Early Stopping Callback
 early_stopping = tf.keras.callbacks.EarlyStopping(
-    monitor='loss',  # Monitor validation loss
+    monitor='val_loss',  # Monitor validation loss
     patience=25,  # Number of epochs with no improvement to wait before stopping
     restore_best_weights=True  # Restore the model weights from the epoch with the best validation loss
 )
@@ -159,7 +159,7 @@ regression_history = regression_model.fit(
     X_train,
     y_train,
     epochs=20000,  # Set a high number of epochs
-    batch_size=64,  # Specify the batch size
+    batch_size=1024,  # Specify the batch size
     validation_data=(X_validation_processed, y_validation),  # Pass the validation data
     callbacks=[early_stopping],  # Use early stopping callback,
     sample_weight=sample_weights,  # Pass the sample weights
@@ -211,34 +211,34 @@ ax2.set_xscale('log')
 plt.tight_layout()
 plt.show()
 
-# # Add a new column to the test_data dataframe for predictions
-# test_data['predicted_value'] = y_pred
+# Add a new column to the test_data dataframe for predictions
+test_data['predicted_value'] = y_pred
 
-# # Now the 'test_data' dataframe contains both the actual 'value' column and the predicted values
-# # You can save this dataframe to a CSV file if needed
-# test_data.to_csv(print_path + "Data/"  + "test_data_with_predictions.csv", index=False)
+# Now the 'test_data' dataframe contains both the actual 'value' column and the predicted values
+# You can save this dataframe to a CSV file if needed
+test_data.to_csv(print_path + "Data/"  + "test_data_secchi_with_predictions.csv", index=False)
 
-# filename = f"_{'_'.join(categorical_cols)}_nodes_{nodes}_learningrate_{learning_rate}"
-# plt.savefig(print_path+"Figs/" + f"E2_secchi_regression_plot_{filename}.png")
+filename = f"_{'_'.join(categorical_cols)}_nodes_{nodes}_learningrate_{learning_rate}"
+plt.savefig(print_path+"Figs/" + f"E2_secchi_regression_plot_{filename}.png")
 
-# epochs_before_stopping = early_stopping.stopped_epoch
+epochs_before_stopping = early_stopping.stopped_epoch
 
-# settings_info = {
-#     "Number of Epochs Before Early Stopping": epochs_before_stopping,
-#     "Model Settings": model_settings,
-#     "Nodes": nodes,
-#     "Categorical Columns": categorical_cols,
-#     "Test MAE": test_mae,
-#     "Test MSE": test_mse,
-#     "Test RMSE": test_rmse,
-#     "Learning Rate": learning_rate,
-# }
+settings_info = {
+    "Number of Epochs Before Early Stopping": epochs_before_stopping,
+    "Model Settings": model_settings,
+    "Nodes": nodes,
+    "Categorical Columns": categorical_cols,
+    "Test MAE": test_mae,
+    "Test MSE": test_mse,
+    "Test RMSE": test_rmse,
+    "Learning Rate": learning_rate,
+}
 
-# csv_filename = print_path + "Data/" + f"model_{filename}_settings.csv"
+csv_filename = print_path + "Data/" + f"model_{filename}_settings.csv"
 
-# with open(csv_filename, mode='w', newline='') as csv_file:
-#     writer = csv.writer(csv_file)
-#     writer.writerow(["Parameter", "Value"])  # Adding header row
+with open(csv_filename, mode='w', newline='') as csv_file:
+    writer = csv.writer(csv_file)
+    writer.writerow(["Parameter", "Value"])  # Adding header row
 
-#     for key, value in settings_info.items():
-#         writer.writerow([key, value])
+    for key, value in settings_info.items():
+        writer.writerow([key, value])

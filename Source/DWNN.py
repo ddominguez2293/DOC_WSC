@@ -203,10 +203,10 @@ output_layer = tf.keras.layers.Dense(1)(concatenated)
 # Create the combined model
 model = tf.keras.Model(inputs=[wide_input_layer, deep_input_layer], outputs=output_layer)
 
-adam_optimizer = tf.keras.optimizers.Adam(learning_rate=0.001) 
+adam_optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001) 
 
 # Compile the model with the custom loss function
-model.compile(optimizer='adam', loss=dynamic_penalty_loss, metrics=['mae', 'mse'],weighted_metrics=[])
+model.compile(optimizer='adam', loss=mae_loss, metrics=['mae', 'mse'],weighted_metrics=[])
 
 # Split the data into training and testing sets
 split_size = 0.2  # Tunable parameter: fraction of the dataset used for testing
@@ -219,7 +219,7 @@ train_wide, test_wide, train_deep, test_deep, train_labels, test_labels = train_
 # Define the Early Stopping callback
 early_stopping = tf.keras.callbacks.EarlyStopping(
     monitor='loss',  # Monitor  loss
-    patience=25,  # Number of epochs with no improvement to wait before stopping
+    patience=50,  # Number of epochs with no improvement to wait before stopping
     restore_best_weights=True  # Restore the model weights from the epoch with the best validation loss
 )
 
@@ -247,7 +247,7 @@ sample_weights = np.select(conditions, weights, default=1.0)
 history = model.fit([train_wide, train_deep], 
                     train_labels, 
                     epochs=100000, 
-                    batch_size=256, #256
+                    batch_size=1024, #256
                     validation_split=0.2,
                     sample_weight=sample_weights, 
                     callbacks=[early_stopping], 
