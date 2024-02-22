@@ -1,0 +1,237 @@
+---
+title: "Secchi"
+author: "Daniel Dominguez"
+date: "2024-02-12"
+output: html_document
+---
+
+```{r}
+local_Path <- "/Users/danieldominguez/Documents/Code/DOC_WSC/Data/"
+
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(sf)
+library(dplyr)
+
+```
+
+
+```{r prep}
+# filter data
+data <- read_csv(file.path(local_Path, "aquasat_processed.csv"),show_col_types = FALSE) %>%
+  #filter(!is.na(secchi)) %>% # remove rows without DOC data
+  filter(!is.na(doc) & !is.na(secchi)) %>% # (option) filtering out rows without DOC and Secchi
+  filter(pwater >= 80) %>% #filter for mostly water pixels
+  filter(!type == "Facility") %>% #not enough data to be representative when splitting betwen quanitles
+  filter(n>=10) %>% # (option) filter if there is not at least x readings for a site for better training
+  filter(pixelCount > 0) %>% #filter erroneous pixel counts
+  mutate(value = doc) %>%  #mutate doc to target value
+  filter_all(all_vars(!is.infinite(.))) %>% 
+  filter(value<=45)
+
+```
+
+```{r}
+#optional ecoregion filtering to make sure there are enough observations after other filtering
+ecoregion_n<-data %>% 
+  group_by(ecoregion) %>% 
+  summarise(ecoregion_n=n())
+
+data<-left_join(data,ecoregion_n) %>% 
+  filter(ecoregion_n>=100)
+
+```
+
+
+```{r}
+bands <- c("red", "green","blue", "swir1", "swir2","nir",
+  "NR", "BR", "GR", "SR", "BG", "RG", "NG", "SG", "BN", "GN",
+  "RN", "SN", "BS", "GS", "RS", "NS", "RGN", "RGB", "RGS", "RBN",
+  "RBS", "RNS", "GBR", "GBN", "GBS", "GRN", "GRB", "GNS",
+  "BRG", "BRS", "BGN", "BGS", "BNS", "NRG", "NRB", "NRS",
+  "NGB", "NGS", "NBS", "GR2", "GN2", "B_RG", "NS_NR", "fai",
+  "N_S", "N_R", "NDVI", "NDWI", "NDSSI", "GNGN"
+)# (option)All available bands
+```
+
+
+```{r}
+
+# select featuers
+features <- c("red", "blue","GS","green",
+              "swir1","swir2","SG","RBS","NGS","GBS","GR2","GN2", "GRB","N_R",
+              "NR","N_S", "RGB","ecoregion", "type","season","WC")  #Narrower features
+
+filtered_data <- data %>%
+  select(features, value, uniqueID, SiteID, ecoregion, type, season, WC,secchi) %>% 
+  mutate_if(is.character,as.factor) %>% 
+  drop_na(.) #one more check to drop na was getting errors in python
+
+
+#This will create a "magnitude label if below a threshold low if above high for better train test split 
+filtered_data$mag <- if_else(filtered_data$value >= 1, "low", "high")
+
+# This will write the full filtered dataset which can then be split in the python files
+write_csv(filtered_data, file.path(local_Path,"aquasat_full_secchi.csv"))
+
+```
+
+```{r}
+random_filter_data <- function(df, column_name, condition, filter_percentage, seed ) {
+  # Set a random seed for reproducibility
+  if (!is.null(seed)) {
+    set.seed(seed)
+  }
+  
+  # Create a logical vector indicating whether rows satisfy the condition
+  mask <- sapply(df[[column_name]], condition)
+  
+  # Randomly select the indices to keep based on the filter_percentage
+  num_to_keep <- round(sum(mask) * (1 - filter_percentage))
+  indices_to_keep <- sample(which(mask), num_to_keep)
+  
+  # Filter the DataFrame based on the selected indices
+  filtered_df <- df[indices_to_keep, ]
+  
+  return(filtered_df)
+}
+```
+
+
+```{r}
+
+# # this is an experimental split I was using to artificially reduce the amount of low observations similar to Gardner et al., 2023
+# rf_data_low<-random_filter_data(filtered_data, 'value', function(x) x > 0 & x < 10, filter_percentage = 0.95, seed = 01) %>% 
+#   dplyr::select(bands, value, uniqueID,ecoregion, type,season,WC) %>% 
+#   mutate(mag="low")
+# 
+# rf_data_med<-random_filter_data(filtered_data, 'value', function(x) x > 10 & x < 40, filter_percentage = 0.9, seed = 01) %>% 
+#   dplyr::select(bands, value, uniqueID,ecoregion, type,season,WC)%>% 
+#   mutate(mag="low")
+# 
+# #We keep all the data that is a high outlier
+# rf_data_high<- data %>% 
+#   filter(value>=40) %>% 
+#   dplyr::select(bands, value, uniqueID, ecoregion, type, season, WC)%>% 
+#   mutate(mag="high")
+# 
+# rf_data<-rbind(rf_data_low,rf_data_med,rf_data_high)
+
+#write.csv(rf_data,paste0(local_Path,"rf_aquasat_full.csv"),row.names=FALSE)  
+
+```
+
+
+```{r}
+# Pre split the data into train and test for better stratification sampling
+
+set.seed(15) # set seed for reproducibility
+
+train_v1 <- filtered_data %>%
+  group_by( mag,ecoregion,type) %>%
+  sample_frac(.8) %>%
+  ungroup() %>%
+  arrange(value)
+
+validation_v1<-train_v1 %>% 
+  group_by( mag,ecoregion,type) %>%
+  sample_frac(.2) %>%
+  ungroup() %>%
+  arrange(value)
+  
+# Select all uniqueID's not selected in the training set
+test_v1 <- filtered_data %>%
+  filter(!(uniqueID %in% train_v1$uniqueID)) %>%
+  ungroup() %>%
+  arrange(value)
+# or anti_join(filtered_data, train_v1)
+  
+train_v1 %>% 
+  select(-SiteID) %>% 
+  write_csv(., 
+            file.path(local_Path,"DOC_Secchi_train_v1.csv"))
+
+validation_v1 %>% 
+  select(-SiteID) %>% 
+  write_csv(., 
+            file.path(local_Path,"DOC_Secchi_validation_v1.csv"))
+
+test_v1 %>% 
+  select(-SiteID) %>% 
+  write_csv(.,
+          file.path(local_Path,"DOC_Secchi_test_v1.csv"))
+    
+```
+
+
+```{r}
+# Pre split the data into train and test for better stratification sampling
+# this time by grabbing a proportion of random sites
+unique_SiteID <- data.frame(unique(filtered_data$SiteID)) %>% 
+  rename(SiteID = unique.filtered_data.SiteID.)
+train_ids <- sample_frac(unique_SiteID, 0.8)$SiteID
+
+train_v2 <- filtered_data %>%
+  filter(SiteID %in% train_ids) %>%
+  arrange(value) 
+  
+# Select all uniqueID's not selected in the training set
+test_v2 <- anti_join(filtered_data, train_v2)
+  
+train_v2 %>% 
+  select(-SiteID) %>% 
+  write_csv(., 
+            file.path(local_Path,"DOC_train_v2.csv"))
+test_v2 %>% 
+  select(-SiteID) %>% 
+  write_csv(.,
+          file.path(local_Path,"DOC_test_v2.csv"))
+```
+
+Add a quick plot to see if we retained range and general pattern of data
+
+```{r}
+ggplot(filtered_data, aes(color = type)) + geom_histogram(aes(value)) + facet_grid(type ~ .)
+ggplot(train_v1, aes(color = type)) + geom_histogram(aes(value)) + facet_grid(type ~ .)
+ggplot(test_v1, aes(color = type)) + geom_histogram(aes(value)) + facet_grid(type ~ .)
+ggplot(train_v2, aes(color = type)) + geom_histogram(aes(value)) + facet_grid(type ~ .)
+ggplot(test_v2, aes(color = type)) + geom_histogram(aes(value)) + facet_grid(type ~ .)
+
+ggplot(filtered_data, aes(color = type)) + geom_histogram(aes(log(value))) + facet_grid(type ~ .)
+ggplot(train_v1, aes(color = type)) + geom_histogram(aes(log(value))) + facet_grid(type ~ .)
+ggplot(test_v1, aes(color = type)) + geom_histogram(aes(log(value))) + facet_grid(type ~ .)
+ggplot(train_v2, aes(color = type)) + geom_histogram(aes(log(value))) + facet_grid(type ~ .)
+ggplot(test_v2, aes(color = type)) + geom_histogram(aes(log(value))) + facet_grid(type ~ .)
+
+range(filtered_data$value)
+range(train_v1$value)
+range(test_v1$value)
+range(train_v2$value)
+range(test_v2$value)
+```
+
+And also look for ecoregion presence
+
+```{r}
+ggplot(filtered_data, aes(fill = ecoregion)) + 
+  geom_histogram(aes(ecoregion), stat = "count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggplot(train_v1, aes(fill = ecoregion)) + 
+  geom_histogram(aes(ecoregion), stat = "count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggplot(test_v1, aes(fill = ecoregion)) + 
+  geom_histogram(aes(ecoregion), stat = "count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggplot(train_v2, aes(fill = ecoregion)) + 
+  geom_histogram(aes(ecoregion), stat = "count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ggplot(test_v2, aes(fill = ecoregion)) + 
+  geom_histogram(aes(ecoregion), stat = "count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+# note, this drops one ecoregion group from the test set
+                                                               
+```
+
